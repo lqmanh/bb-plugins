@@ -5,6 +5,7 @@ Monorepo for lqmanh BB plugins.
 ## Status
 
 `plugins/sonora/` contains the Sonora plugin source.
+`plugins/quiet-notices/` is the scaffold for the child-notice queue.
 
 - `bb-plugin-opencode2` is intentionally excluded and stays in its own
   repository.
@@ -17,6 +18,7 @@ bb-plugins/
 ├── .bb/
 │   └── plugins.json
 ├── plugins/
+│   ├── quiet-notices/   # child-notice queue scaffold
 │   └── sonora/          # Sonora plugin
 ├── scripts/
 │   └── run-all.sh

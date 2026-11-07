@@ -6,6 +6,10 @@
     {
       "name": "sonora",
       "source": "./plugins/sonora"
+    },
+    {
+      "name": "quiet-notices",
+      "source": "./plugins/quiet-notices"
     }
   ]
 }
