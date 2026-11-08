@@ -26,6 +26,16 @@ export default function plugin(
   /** `undefined` means no baseline yet; `null` means the last payload was empty. */
   let previous: SonoraSnapshot | null | undefined;
 
+  bb.settings.define({
+    threadBackdrop: {
+      type: "boolean",
+      label: "Album art behind threads",
+      description:
+        "Show the current track's cover behind threads and the New thread screen.",
+      default: false,
+    },
+  });
+
   function invalidate() {
     bb.rpc.experimental_invalidate([NOW_PLAYING_RPC_TAG]);
   }

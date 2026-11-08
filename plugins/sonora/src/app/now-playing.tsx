@@ -14,7 +14,7 @@ import {
   nowPlayingRpcContract,
   type PlaybackState,
 } from "../shared/now-playing.ts";
-import { CoverBackdrop } from "./backdrop.tsx";
+import { CoverBackdrop, useCoverSource } from "./backdrop.tsx";
 import { NOW_PLAYING_TICK_MS, SONORA_ICONS } from "./constants.ts";
 
 /**
@@ -200,7 +200,9 @@ export function NowPlayingDisclosure() {
     method: "nowPlaying",
     input: null,
   });
-  const [failedCover, setFailedCover] = useState<string | null>(null);
+  const { cover: coverUrl, onError: handleCoverError } = useCoverSource(
+    data?.track?.cover ?? null,
+  );
 
   const isPlaying =
     data?.status === "running" &&
@@ -231,8 +233,6 @@ export function NowPlayingDisclosure() {
   }
 
   const artists = track.artists.length > 0 ? track.artists.join(", ") : null;
-  const coverUrl =
-    track.cover !== null && failedCover !== track.cover ? track.cover : null;
 
   return (
     <div
@@ -242,7 +242,7 @@ export function NowPlayingDisclosure() {
       {coverUrl === null ? null : (
         <CoverBackdrop
           cover={coverUrl}
-          onError={() => setFailedCover(coverUrl)}
+          onError={handleCoverError}
         />
       )}
       <div className="relative flex flex-col gap-2">
@@ -260,7 +260,7 @@ export function NowPlayingDisclosure() {
               alt={`${track.title} cover`}
               referrerPolicy="no-referrer"
               className="size-10 shrink-0 rounded-md border border-sidebar-border object-cover"
-              onError={() => setFailedCover(coverUrl)}
+              onError={handleCoverError}
             />
           )}
           <div className="min-w-0 flex-1">

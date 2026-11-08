@@ -46,3 +46,16 @@ export function nowPlaying(overrides: Partial<NowPlaying> = {}): NowPlaying {
     ...overrides,
   };
 }
+
+let receivedAtCounter = 10_000;
+
+export function nextReceivedAt(): number {
+  receivedAtCounter += 1;
+  return receivedAtCounter;
+}
+
+export function playing(overrides: Partial<NowPlaying> = {}): NowPlaying {
+  return { ...nowPlaying(), receivedAt: nextReceivedAt(), ...overrides };
+}
+
+export type RpcHandler = () => NowPlaying | Promise<NowPlaying>;

@@ -16,9 +16,45 @@
     background-color: color-mix(
         in oklab,
         var(--sonora-backdrop-wash-color)
-          calc(var(--sonora-backdrop-wash-opacity) * 100%),
+            calc(var(--sonora-backdrop-wash-opacity) * 100%),
         transparent
     );
+}
+
+/*
+ * Thread and New thread surfaces opt in by mounting the overlay, which sets
+ * the root attribute while a backdrop is shown.
+ */
+.sonora-surface-backdrop {
+    --sonora-backdrop-blur: 64px;
+    --sonora-surface-backdrop-mask: linear-gradient(
+        to bottom,
+        #000 0 3rem,
+        rgb(0 0 0 / 70%) 30%,
+        rgb(0 0 0 / 30%) 60%,
+        rgb(0 0 0 / 10%) 80%,
+        transparent 100%
+    );
+
+    position: absolute;
+    inset-inline: 0;
+    top: var(--bb-app-chrome-row-height, 48px);
+    bottom: var(--sonora-surface-backdrop-bottom, 0px);
+    z-index: -1;
+    pointer-events: none;
+    mask-image: var(--sonora-surface-backdrop-mask);
+}
+
+html[data-sonora-backdrop]
+    :is(#thread-detail-timeline-panel, #root-compose-main-panel) {
+    position: relative;
+    isolation: isolate;
+}
+
+html[data-sonora-backdrop]
+    #thread-detail-timeline-panel
+    [data-page-scroll-viewport] {
+    background-color: transparent;
 }
 
 @keyframes sonora-marquee {

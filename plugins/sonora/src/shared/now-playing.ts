@@ -22,12 +22,19 @@ export const nowPlayingStatusSchema = z.enum([
 ]);
 export type NowPlayingStatus = z.infer<typeof nowPlayingStatusSchema>;
 
+/** An empty cover is the same as no cover; normalize once at the boundary. */
+const coverSchema = z
+  .string()
+  .nullable()
+  .default(null)
+  .transform((cover) => (cover === "" ? null : cover));
+
 const trackFields = {
   id: z.string().nullable().default(null),
   title: z.string(),
   artists: z.array(z.string()).default([]),
   album: z.string().nullable().default(null),
-  cover: z.string().nullable().default(null),
+  cover: coverSchema,
   duration: z.number().nonnegative(),
 };
 

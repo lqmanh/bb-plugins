@@ -74,6 +74,17 @@ describe("parseCurrentLine", () => {
     expect(parsed.snapshot.volume).toBeNull();
   });
 
+  it("normalizes an empty cover to null", () => {
+    const wire = {
+      ...snapshot(),
+      track: { ...snapshot().track, cover: "" },
+    };
+    const parsed = parseCurrentLine(JSON.stringify(wire));
+    expect(parsed.kind).toBe("snapshot");
+    if (parsed.kind !== "snapshot") return;
+    expect(parsed.snapshot.track.cover).toBeNull();
+  });
+
   it("rejects malformed JSON, missing required fields, and track: null", () => {
     expect(parseCurrentLine("{")).toEqual({ kind: "malformed" });
     expect(parseCurrentLine(JSON.stringify({ state: "playing" }))).toEqual({

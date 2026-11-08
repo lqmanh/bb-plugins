@@ -71,13 +71,30 @@ export function useCoverCrossfade(cover: string): CoverCrossfade {
 
   const finishFade = useCallback((finishedCover: string) => {
     setLayers((state) =>
-      state.previous === finishedCover
-        ? { ...state, previous: null }
-        : state,
+      state.previous === finishedCover ? { ...state, previous: null } : state,
     );
   }, []);
 
   return { ...layers, finishFade };
+}
+
+export interface CoverSource {
+  cover: string | null;
+  onError: () => void;
+}
+
+/**
+ * Resolve a track's cover to a usable URL. Null and failed covers mean
+ * "no cover". Empty covers are already null here.
+ */
+export function useCoverSource(rawCover: string | null): CoverSource {
+  const [failedCover, setFailedCover] = useState<string | null>(null);
+  const cover = rawCover !== null && failedCover !== rawCover ? rawCover : null;
+  const onError = useCallback(() => {
+    if (rawCover !== null) setFailedCover(rawCover);
+  }, [rawCover]);
+
+  return { cover, onError };
 }
 
 /**

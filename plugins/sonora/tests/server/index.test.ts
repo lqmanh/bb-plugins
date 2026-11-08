@@ -44,6 +44,21 @@ function invalidations(
 }
 
 describe("Sonora plugin", () => {
+  it("declares the thread backdrop setting off by default", async () => {
+    const host = createFakePluginHost({ pluginId: "sonora" });
+    hosts.push(host);
+
+    await plugin(host.bb);
+
+    expect(
+      host.harness.inspection.registrations.settingsDescriptors.threadBackdrop,
+    ).toMatchObject({
+      type: "boolean",
+      label: "Album art behind threads",
+      default: false,
+    });
+  });
+
   it("serves null and nullable wire shapes, invalidates on change only, and logs", async () => {
     const host = createFakePluginHost({ pluginId: "sonora" });
     hosts.push(host);
