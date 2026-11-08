@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import {
   experimental_Icon as Icon,
   experimental_useRpcQuery,
@@ -8,6 +14,7 @@ import {
   nowPlayingRpcContract,
   type PlaybackState,
 } from "../shared/now-playing.ts";
+import { CoverBackdrop } from "./backdrop.tsx";
 import { NOW_PLAYING_TICK_MS, SONORA_ICONS } from "./constants.ts";
 
 /**
@@ -71,6 +78,9 @@ function useClientClock(isPlaying: boolean): number {
 }
 
 const STATE_ROW_CLASS_NAME = "px-2.5 py-2 text-2xs text-subtle-foreground";
+const DISCLOSURE_BACKDROP_STYLE = {
+  "--sonora-backdrop-wash-color": "var(--sidebar)",
+} as CSSProperties;
 
 function StatusRow({ children }: { children: ReactNode }) {
   return (
@@ -221,56 +231,67 @@ export function NowPlayingDisclosure() {
   }
 
   const artists = track.artists.length > 0 ? track.artists.join(", ") : null;
-  const cover = track.cover;
-  const showCover = cover !== null && failedCover !== cover;
+  const coverUrl =
+    track.cover !== null && failedCover !== track.cover ? track.cover : null;
 
   return (
-    <div className="flex flex-col gap-2 p-2.5 text-sidebar-foreground">
-      <div className="flex min-w-0 items-center gap-2.5">
-        {showCover ? (
-          <img
-            src={cover}
-            alt={`${track.title} cover`}
-            referrerPolicy="no-referrer"
-            className="size-10 shrink-0 rounded-md border border-sidebar-border object-cover"
-            onError={() => setFailedCover(cover)}
-          />
-        ) : (
-          <div
-            aria-hidden="true"
-            className="flex size-10 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-subtle-foreground"
-          >
-            <Icon name={SONORA_ICONS.audioLines} className="size-5" />
+    <div
+      className="relative overflow-hidden p-2.5 text-sidebar-foreground"
+      style={DISCLOSURE_BACKDROP_STYLE}
+    >
+      {coverUrl === null ? null : (
+        <CoverBackdrop
+          cover={coverUrl}
+          onError={() => setFailedCover(coverUrl)}
+        />
+      )}
+      <div className="relative flex flex-col gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {coverUrl === null ? (
+            <div
+              aria-hidden="true"
+              className="flex size-10 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-subtle-foreground"
+            >
+              <Icon name={SONORA_ICONS.audioLines} className="size-5" />
+            </div>
+          ) : (
+            <img
+              src={coverUrl}
+              alt={`${track.title} cover`}
+              referrerPolicy="no-referrer"
+              className="size-10 shrink-0 rounded-md border border-sidebar-border object-cover"
+              onError={() => setFailedCover(coverUrl)}
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <MarqueeText
+              text={track.title}
+              className="text-xs font-medium"
+            />
+            {artists === null ? null : (
+              <MarqueeText
+                text={artists}
+                className="text-2xs text-subtle-foreground"
+              />
+            )}
+            {track.album === null || track.album.length === 0 ? null : (
+              <MarqueeText
+                text={track.album}
+                className="text-2xs text-subtle-foreground"
+              />
+            )}
           </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <MarqueeText
-            text={track.title}
-            className="text-xs font-medium"
-          />
-          {artists === null ? null : (
-            <MarqueeText
-              text={artists}
-              className="text-2xs text-subtle-foreground"
-            />
-          )}
-          {track.album === null || track.album.length === 0 ? null : (
-            <MarqueeText
-              text={track.album}
-              className="text-2xs text-subtle-foreground"
-            />
-          )}
+          <span className="shrink-0 self-start rounded-sm border border-sidebar-border px-1.5 py-0.5 text-2xs leading-none text-sidebar-foreground">
+            {PLAYBACK_LABELS[data.state ?? "unknown"]}
+          </span>
         </div>
-        <span className="shrink-0 self-start rounded-sm bg-sidebar-accent px-1.5 py-0.5 text-2xs leading-none text-sidebar-foreground">
-          {PLAYBACK_LABELS[data.state ?? "unknown"]}
-        </span>
+        <PlaybackProgress
+          isPlaying={isPlaying}
+          position={data.position}
+          duration={track.duration}
+          receivedAt={data.receivedAt}
+        />
       </div>
-      <PlaybackProgress
-        isPlaying={isPlaying}
-        position={data.position}
-        duration={track.duration}
-        receivedAt={data.receivedAt}
-      />
     </div>
   );
 }
