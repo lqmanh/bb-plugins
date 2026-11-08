@@ -4,9 +4,15 @@
   "private": true,
   "description": "Monorepo for lqmanh BB plugins",
   "scripts": {
-    "install:all": "bash scripts/run-all.sh install",
+    "install:all": "npm install && bash scripts/run-all.sh install",
     "check": "bash scripts/run-all.sh check",
     "build": "bash scripts/run-all.sh build",
     "test": "bash scripts/run-all.sh test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.7.0",
+    "vitest": "^5.1.0"
   }
 }

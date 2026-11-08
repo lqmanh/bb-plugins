@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
     "build": "bb plugin build",
     "check": "npm run typecheck && npm run build"
   },
@@ -23,10 +24,8 @@
   "devDependencies": {
     "@get-bb/plugin-sdk": "0.6.132",
     "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "hono": "^4.11.9",
-    "typescript": "^5.7.0"
+    "hono": "^4.11.9"
   }
 }
