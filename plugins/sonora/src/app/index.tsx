@@ -1,4 +1,15 @@
 import { definePluginApp } from "@get-bb/plugin-sdk/app";
 
-/** The plugin frontend. The sidebar footer panel lands in Stage 2. */
-export default definePluginApp(() => {});
+import "./app.css";
+import { SONORA_ICONS } from "./constants.ts";
+import { NowPlayingDisclosure } from "./now-playing.tsx";
+
+export default definePluginApp((app) => {
+  app.experimental_sidebarFooter.register({
+    kind: "disclosure",
+    id: "now-playing",
+    label: "Sonora",
+    icon: SONORA_ICONS.audioLines,
+    component: NowPlayingDisclosure,
+  });
+});

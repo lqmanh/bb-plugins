@@ -1,8 +1,8 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-/** Realtime channel carrying an ephemeral "snapshot changed" signal. */
-export const SONORA_NOW_PLAYING_CHANNEL = "sonora-now-playing";
+/** RPC cache tag invalidated whenever the now-playing snapshot changes. */
+export const NOW_PLAYING_RPC_TAG = "now-playing";
 
 /** Playback states Sonora documents, plus a fallback for values added later. */
 export const playbackStateSchema = z.enum([
@@ -100,6 +100,7 @@ export const nowPlayingRpcContract = defineRpcContract({
   nowPlaying: {
     input: z.null(),
     output: nowPlayingSchema,
+    tags: () => [NOW_PLAYING_RPC_TAG],
   },
 });
 

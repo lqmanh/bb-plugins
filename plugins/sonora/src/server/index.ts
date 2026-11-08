@@ -1,7 +1,7 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 import {
-  SONORA_NOW_PLAYING_CHANNEL,
+  NOW_PLAYING_RPC_TAG,
   emptyNowPlaying,
   nowPlayingRpcContract,
   type NowPlaying,
@@ -17,10 +17,6 @@ import {
 /** Test seam: the watcher's process and clock dependencies. */
 export type SonoraPluginDeps = Partial<WatcherDeps>;
 
-/**
- * Server entry. The watcher owns the only child process; RPC and realtime read
- * the snapshot it keeps in memory. No UI, CLI, or agent surface lives here.
- */
 export default function plugin(
   bb: BbPluginApi,
   overrides: SonoraPluginDeps = {},
@@ -30,8 +26,8 @@ export default function plugin(
   /** `undefined` means no baseline yet; `null` means the last payload was empty. */
   let previous: SonoraSnapshot | null | undefined;
 
-  function publish(status: NowPlaying["status"]) {
-    bb.realtime.publish(SONORA_NOW_PLAYING_CHANNEL, { status });
+  function invalidate() {
+    bb.rpc.experimental_invalidate([NOW_PLAYING_RPC_TAG]);
   }
 
   bb.rpc.register(nowPlayingRpcContract, {
@@ -58,7 +54,7 @@ export default function plugin(
           previous = undefined;
           const changed = latest.status !== status;
           latest = emptyNowPlaying(status, now());
-          if (changed) publish(status);
+          if (changed) invalidate();
         },
         onSnapshot(snapshot, receivedAt) {
           const hadSnapshot = previous !== undefined;
@@ -66,7 +62,7 @@ export default function plugin(
             !hadSnapshot || isMeaningfulChange(previous ?? null, snapshot);
           previous = snapshot;
           latest = toNowPlaying(snapshot, receivedAt);
-          if (changed) publish("running");
+          if (changed) invalidate();
         },
         deps: { ...overrides, log },
       });

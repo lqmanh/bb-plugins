@@ -2,7 +2,10 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import plugin from "../../src/server/index.ts";
-import type { NowPlaying } from "../../src/shared/now-playing.ts";
+import {
+  NOW_PLAYING_RPC_TAG,
+  type NowPlaying,
+} from "../../src/shared/now-playing.ts";
 import { FakeProcess } from "../support/fake-process.ts";
 import { NOT_RUNNING_STDERR, snapshot } from "../support/fixtures.ts";
 import { ScriptedSpawn } from "../support/scripted-spawn.ts";
@@ -34,16 +37,14 @@ async function nowPlaying(
   )) as NowPlaying;
 }
 
-function signalStatuses(
+function invalidations(
   host: ReturnType<typeof createFakePluginHost>,
-): string[] {
-  return host.harness.inspection.realtimeSignals.map(
-    (signal) => (signal.payload as { status?: string }).status ?? "unknown",
-  );
+): ReadonlyArray<readonly string[] | null> {
+  return host.harness.inspection.experimental_rpcInvalidations;
 }
 
 describe("Sonora plugin", () => {
-  it("serves null and nullable wire shapes, publishes on change only, and logs", async () => {
+  it("serves null and nullable wire shapes, invalidates on change only, and logs", async () => {
     const host = createFakePluginHost({ pluginId: "sonora" });
     hosts.push(host);
 
@@ -82,7 +83,7 @@ describe("Sonora plugin", () => {
       expect(value.status).toBe("running");
       expect(value.track).toBeNull();
     });
-    expect(signalStatuses(host)).toContain("running");
+    expect(invalidations(host)).toContainEqual([NOW_PLAYING_RPC_TAG]);
 
     await vi.waitFor(() => expect(script.processes.length).toBe(2));
     const watch = script.processes[1]!;
@@ -103,20 +104,16 @@ describe("Sonora plugin", () => {
       expect(value.provider).toBeNull();
     });
 
-    const signalsAfterTrack = host.harness.inspection.realtimeSignals.length;
+    const invalidationsAfterTrack = invalidations(host).length;
 
     watchLine(watch, { ...nullable, position: 43 });
-    expect(host.harness.inspection.realtimeSignals.length).toBe(
-      signalsAfterTrack,
-    );
+    expect(invalidations(host).length).toBe(invalidationsAfterTrack);
 
     watchLine(watch, {
       ...nullable,
       track: { ...nullable.track, id: "track-2", title: "Other" },
     });
-    expect(host.harness.inspection.realtimeSignals.length).toBe(
-      signalsAfterTrack + 1,
-    );
+    expect(invalidations(host).length).toBe(invalidationsAfterTrack + 1);
 
     expect(
       host.harness.inspection.logEntries.some((entry) =>
@@ -170,6 +167,8 @@ describe("Sonora plugin", () => {
       expect((await nowPlaying(host)).status).toBe("not-running");
     });
 
+    expect(invalidations(host)).toHaveLength(2);
+
     expect(gates.length).toBe(1);
     gates.shift()!();
 
@@ -180,10 +179,7 @@ describe("Sonora plugin", () => {
       expect(value.position).toBe(43);
     });
 
-    const statuses = signalStatuses(host);
-    expect(statuses).toContain("running");
-    expect(statuses).toContain("not-running");
-    expect(statuses).not.toContain("unavailable");
+    expect(invalidations(host)).toHaveLength(3);
 
     service.controller.abort();
     await service.done;
