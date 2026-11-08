@@ -94,6 +94,20 @@ function sonoraGlyph(slot: RenderedSlot): Element | null {
   );
 }
 
+function backdropImages(slot: RenderedSlot): HTMLImageElement[] {
+  const backdrop = slot.container.querySelector(
+    "[data-sonora-backdrop-layer]",
+  );
+  if (backdrop === null) return [];
+  return Array.from(backdrop.querySelectorAll("img"));
+}
+
+function backdropCovers(slot: RenderedSlot): string[] {
+  return backdropImages(slot).map(
+    (image) => image.getAttribute("src") ?? "",
+  );
+}
+
 function expectPlaybackTime(
   slot: RenderedSlot,
   position: string,
@@ -119,6 +133,7 @@ describe("Sonora sidebar footer disclosure", () => {
     const { slot } = await renderDisclosure(() => new Promise(() => {}));
 
     expect(slot.getByRole("status").textContent).toMatch(/loading/i);
+    expect(backdropCovers(slot)).toEqual([]);
   });
 
   it("shows a short error with a retry when the first read fails", async () => {
@@ -134,6 +149,7 @@ describe("Sonora sidebar footer disclosure", () => {
     expect(slot.getByRole("alert").textContent).toContain(
       "Couldn't load now playing.",
     );
+    expect(backdropCovers(slot)).toEqual([]);
     fireEvent.click(slot.getByRole("button", { name: "Retry" }));
     await settle();
 
@@ -160,6 +176,7 @@ describe("Sonora sidebar footer disclosure", () => {
     const { slot } = await renderDisclosure(make);
 
     expect(slot.getByRole("status").textContent).toBe(message);
+    expect(backdropCovers(slot)).toEqual([]);
   });
 
   it("renders a running track", async () => {
@@ -169,6 +186,11 @@ describe("Sonora sidebar footer disclosure", () => {
     expect(slot.getByText("A, B")).toBeTruthy();
     expect(slot.getByText("Album")).toBeTruthy();
     expect(slot.getByText("Playing")).toBeTruthy();
+    expect(backdropCovers(slot)).toEqual(["https://example.test/cover.jpg"]);
+
+    const [backdropImage] = backdropImages(slot);
+    expect(backdropImage?.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(backdropImage?.className).not.toContain("sonora-backdrop-in");
   });
 
   it("interpolates position while playing and clamps it to the duration", async () => {
@@ -195,6 +217,7 @@ describe("Sonora sidebar footer disclosure", () => {
       playing({ state: "paused", position: 42 }),
     );
     expect(slot.getByText("Paused")).toBeTruthy();
+    expect(backdropCovers(slot)).toEqual(["https://example.test/cover.jpg"]);
 
     await advance(5_000);
     expectPlaybackTime(slot, "0:42", "3:33");
@@ -218,6 +241,9 @@ describe("Sonora sidebar footer disclosure", () => {
     await settle();
 
     expectPlaybackTime(slot, "0:57", "3:33");
+    expect(backdropImages(slot)[0]?.className).not.toContain(
+      "sonora-backdrop-in",
+    );
   });
 
   it("refreshes when the snapshot is invalidated", async () => {
@@ -235,6 +261,30 @@ describe("Sonora sidebar footer disclosure", () => {
 
     expect(slot.getByText("Other")).toBeTruthy();
     expectPlaybackTime(slot, "0:50", "3:33");
+  });
+
+  it("keeps the last backdrop when a refresh fails", async () => {
+    let calls = 0;
+    const snapshot = playing({
+      track: track({ cover: "https://example.test/cover-a.jpg" }),
+    });
+    const { slot } = await renderDisclosure(() => {
+      calls += 1;
+      if (calls === 1) return snapshot;
+      throw new Error("offline");
+    });
+    expect(backdropCovers(slot)).toEqual([
+      "https://example.test/cover-a.jpg",
+    ]);
+
+    await slot.behavior.experimental_invalidateRpc([NOW_PLAYING_RPC_TAG]);
+    await settle();
+
+    expect(slot.queryByRole("alert")).toBeNull();
+    expect(slot.getByText("Night Drive")).toBeTruthy();
+    expect(backdropCovers(slot)).toEqual([
+      "https://example.test/cover-a.jpg",
+    ]);
   });
 
   it("guards a zero duration without dividing by zero", async () => {
@@ -258,6 +308,45 @@ describe("Sonora sidebar footer disclosure", () => {
 
     expect(slot.queryByRole("img")).toBeNull();
     expect(sonoraGlyph(slot)).not.toBeNull();
+    expect(backdropCovers(slot)).toEqual([]);
+  });
+
+  it("cross-fades the backdrop when the cover changes", async () => {
+    let current = playing({
+      track: track({ cover: "https://example.test/cover-a.jpg" }),
+    });
+    const { slot } = await renderDisclosure(() => current);
+    expect(backdropCovers(slot)).toEqual([
+      "https://example.test/cover-a.jpg",
+    ]);
+
+    current = playing({
+      track: track({ cover: "https://example.test/cover-b.jpg" }),
+      receivedAt: nextReceivedAt(),
+    });
+    await slot.behavior.experimental_invalidateRpc([NOW_PLAYING_RPC_TAG]);
+    await settle();
+
+    expect(backdropCovers(slot)).toEqual([
+      "https://example.test/cover-a.jpg",
+      "https://example.test/cover-b.jpg",
+    ]);
+
+    const [outgoing, incoming] = backdropImages(slot);
+    if (outgoing === undefined || incoming === undefined) {
+      throw new Error("expected both backdrop layers");
+    }
+    expect(outgoing.className).toContain("sonora-backdrop-out");
+    expect(incoming.className).toContain("sonora-backdrop-in");
+    expect(outgoing.getAttribute("src")).toBe(
+      "https://example.test/cover-a.jpg",
+    );
+    fireEvent.animationEnd(outgoing);
+    await act(async () => {});
+
+    expect(backdropCovers(slot)).toEqual([
+      "https://example.test/cover-b.jpg",
+    ]);
   });
 
   it("falls back to the Sonora glyph when the cover fails to load", async () => {
@@ -265,11 +354,13 @@ describe("Sonora sidebar footer disclosure", () => {
 
     const image = slot.getByRole("img", { name: "Night Drive cover" });
     expect(image.getAttribute("referrerpolicy")).toBe("no-referrer");
+    expect(backdropCovers(slot)).toEqual(["https://example.test/cover.jpg"]);
 
     fireEvent.error(image);
     await act(async () => {});
 
     expect(slot.queryByRole("img")).toBeNull();
     expect(sonoraGlyph(slot)).not.toBeNull();
+    expect(backdropCovers(slot)).toEqual([]);
   });
 });

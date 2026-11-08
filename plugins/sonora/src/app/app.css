@@ -1,9 +1,52 @@
-@keyframes sonora-marquee {
-  from {
-    transform: translateX(0);
-  }
+/*
+ * Shared now-playing backdrop tokens. Other surfaces should reuse these
+ * values instead of copying the effect.
+ */
+:root {
+    --sonora-backdrop-scale: 1.25;
+    --sonora-backdrop-blur: 32px;
+    --sonora-backdrop-saturation: 1.5;
+    --sonora-backdrop-opacity: 0.5;
+    --sonora-backdrop-wash-color: var(--background);
+    --sonora-backdrop-wash-opacity: 0.65;
+    --sonora-backdrop-fade: 2s;
+}
 
-  to {
-    transform: translateX(-50%);
-  }
+.sonora-backdrop-wash {
+    background-color: color-mix(
+        in oklab,
+        var(--sonora-backdrop-wash-color)
+          calc(var(--sonora-backdrop-wash-opacity) * 100%),
+        transparent
+    );
+}
+
+@keyframes sonora-marquee {
+    from {
+        transform: translateX(0);
+    }
+
+    to {
+        transform: translateX(-50%);
+    }
+}
+
+@keyframes sonora-backdrop-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes sonora-backdrop-out {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
 }
