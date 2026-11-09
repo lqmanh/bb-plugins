@@ -33,10 +33,7 @@ export interface WatcherStream {
 export interface WatcherProcess {
   stdout: WatcherStream | null;
   stderr: WatcherStream | null;
-  on(
-    event: "error",
-    listener: (error: NodeJS.ErrnoException) => void,
-  ): unknown;
+  on(event: "error", listener: (error: NodeJS.ErrnoException) => void): unknown;
   on(
     event: "close",
     listener: (code: number | null, signal: NodeJS.Signals | null) => void,
@@ -44,10 +41,7 @@ export interface WatcherProcess {
   kill(signal?: NodeJS.Signals): boolean;
 }
 
-export type SpawnWatcherProcess = (
-  command: string,
-  args: string[],
-) => WatcherProcess;
+export type SpawnWatcherProcess = (command: string, args: string[]) => WatcherProcess;
 
 export interface WatcherDeps {
   spawn: SpawnWatcherProcess;
@@ -241,11 +235,7 @@ function isNotRunningExit(code: number | null, stderr: string): boolean {
   return code === 3 || /not running/i.test(stderr);
 }
 
-function startChild(
-  binary: string,
-  args: string[],
-  deps: WatcherDeps,
-): WatcherProcess {
+function startChild(binary: string, args: string[], deps: WatcherDeps): WatcherProcess {
   const child = deps.spawn(binary, args);
   child.stdout?.setEncoding?.("utf8");
   child.stderr?.setEncoding?.("utf8");
@@ -372,15 +362,17 @@ function runWatch(
       if (settled) return;
       settled = true;
       if (onAbort) options.signal.removeEventListener("abort", onAbort);
-      resolve(
-        message === undefined ? { delivered, exit } : { delivered, exit, message },
-      );
+      resolve(message === undefined ? { delivered, exit } : { delivered, exit, message });
     };
 
     try {
       child = startChild(binary, ["watch", "--json", "--position"], deps);
     } catch (error) {
-      resolve({ delivered: false, exit: "error", message: errorMessage(error) });
+      resolve({
+        delivered: false,
+        exit: "error",
+        message: errorMessage(error),
+      });
       return;
     }
 
@@ -395,10 +387,7 @@ function runWatch(
           deps.log("warn", "Skipped a malformed line from sonora watch");
           continue;
         }
-        options.onSnapshot(
-          parsed.kind === "empty" ? null : parsed.snapshot,
-          deps.now(),
-        );
+        options.onSnapshot(parsed.kind === "empty" ? null : parsed.snapshot, deps.now());
         delivered = true;
       }
     });
@@ -418,10 +407,7 @@ function runWatch(
       } else if (isNotRunningExit(code, stderr)) {
         finish("not-running");
       } else {
-        finish(
-          "error",
-          stderr.trim() || `sonora watch exited ${code ?? "?"}`,
-        );
+        finish("error", stderr.trim() || `sonora watch exited ${code ?? "?"}`);
       }
     });
 

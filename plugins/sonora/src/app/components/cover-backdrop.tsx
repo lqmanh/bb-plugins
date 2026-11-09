@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
+
+import { TRACK_FADE_MS } from "../lib/constants.ts";
+import { useCoverCrossfade } from "../lib/cover.ts";
+
+const TRACK_FADE_STYLE = {
+  "--sonora-track-fade": `${TRACK_FADE_MS}ms`,
+} as CSSProperties;
 
 function BackdropLayer({
   cover,
@@ -15,9 +22,9 @@ function BackdropLayer({
 }) {
   const imageRef = useRef<HTMLImageElement>(null);
   const animation = outgoing
-    ? "animate-[sonora-backdrop-out_var(--sonora-backdrop-fade)_ease-out_forwards]"
+    ? "animate-[sonora-backdrop-out_var(--sonora-track-fade)_ease-in-out_forwards]"
     : animateIn
-      ? "animate-[sonora-backdrop-in_var(--sonora-backdrop-fade)_ease-out]"
+      ? "animate-[sonora-backdrop-in_var(--sonora-track-fade)_ease-in-out]"
       : "";
 
   useEffect(() => {
@@ -47,59 +54,10 @@ function BackdropLayer({
   );
 }
 
-export interface CoverCrossfade {
-  current: string;
-  previous: string | null;
-  finishFade: (cover: string) => void;
-}
-
-/**
- * Tracks the outgoing cover until its cross-fade animation ends. The fade
- * duration lives in CSS (`--sonora-backdrop-fade`), so callers only need to
- * report `animationend` for the outgoing layer.
- */
-export function useCoverCrossfade(cover: string): CoverCrossfade {
-  const [layers, setLayers] = useState<{
-    current: string;
-    previous: string | null;
-  }>({ current: cover, previous: null });
-
-  if (layers.current !== cover) {
-    // Keep the old cover underneath while the new one fades in.
-    setLayers({ current: cover, previous: layers.current });
-  }
-
-  const finishFade = useCallback((finishedCover: string) => {
-    setLayers((state) =>
-      state.previous === finishedCover ? { ...state, previous: null } : state,
-    );
-  }, []);
-
-  return { ...layers, finishFade };
-}
-
-export interface CoverSource {
-  cover: string | null;
-  onError: () => void;
-}
-
-/**
- * Resolve a track's cover to a usable URL. Null and failed covers mean
- * "no cover". Empty covers are already null here.
- */
-export function useCoverSource(rawCover: string | null): CoverSource {
-  const [failedCover, setFailedCover] = useState<string | null>(null);
-  const cover = rawCover !== null && failedCover !== rawCover ? rawCover : null;
-  const onError = useCallback(() => {
-    if (rawCover !== null) setFailedCover(rawCover);
-  }, [rawCover]);
-
-  return { cover, onError };
-}
-
 /**
  * Blurred cover art behind a surface, with a cross-fade between covers.
- * Effect values live in `app.css` so other surfaces can reuse the same look.
+ * Effect values live in `app.css` so other surfaces can reuse the same look;
+ * the fade takes `TRACK_FADE_MS`, like the lava.
  */
 export function CoverBackdrop({
   cover,
@@ -114,6 +72,7 @@ export function CoverBackdrop({
     <div
       aria-hidden="true"
       data-sonora-backdrop-layer=""
+      style={TRACK_FADE_STYLE}
       className="pointer-events-none absolute inset-0 overflow-hidden"
     >
       {previous === null ? null : (

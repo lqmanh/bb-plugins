@@ -17,10 +17,7 @@ import {
 /** Test seam: the watcher's process and clock dependencies. */
 export type SonoraPluginDeps = Partial<WatcherDeps>;
 
-export default function plugin(
-  bb: BbPluginApi,
-  overrides: SonoraPluginDeps = {},
-) {
+export default function plugin(bb: BbPluginApi, overrides: SonoraPluginDeps = {}) {
   const now = overrides.now ?? Date.now;
   let latest: NowPlaying = emptyNowPlaying("unavailable", 0);
   /** `undefined` means no baseline yet; `null` means the last payload was empty. */
@@ -33,6 +30,12 @@ export default function plugin(
       description:
         "Show the current track's cover behind threads and the New thread screen.",
       default: false,
+    },
+    nowPlayingStrip: {
+      type: "boolean",
+      label: "Show what's playing above the prompt box",
+      description: "Show the current track above the prompt box while the agent works.",
+      default: true,
     },
   });
 
@@ -68,8 +71,7 @@ export default function plugin(
         },
         onSnapshot(snapshot, receivedAt) {
           const hadSnapshot = previous !== undefined;
-          const changed =
-            !hadSnapshot || isMeaningfulChange(previous ?? null, snapshot);
+          const changed = !hadSnapshot || isMeaningfulChange(previous ?? null, snapshot);
           previous = snapshot;
           latest = toNowPlaying(snapshot, receivedAt);
           if (changed) invalidate();

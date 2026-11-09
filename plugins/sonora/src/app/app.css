@@ -3,22 +3,41 @@
  * values instead of copying the effect.
  */
 :root {
-    --sonora-backdrop-scale: 1.25;
-    --sonora-backdrop-blur: 32px;
-    --sonora-backdrop-saturation: 1.5;
-    --sonora-backdrop-opacity: 0.5;
-    --sonora-backdrop-wash-color: var(--background);
-    --sonora-backdrop-wash-opacity: 0.65;
-    --sonora-backdrop-fade: 2s;
+  --sonora-backdrop-scale: 1.25;
+  --sonora-backdrop-blur: 32px;
+  --sonora-backdrop-saturation: 1.5;
+  --sonora-backdrop-opacity: 0.5;
+  --sonora-backdrop-wash-color: var(--background);
+  --sonora-backdrop-wash-opacity: 0.65;
+  --sonora-record-hole: 6px;
+  --sonora-strip-height: 44px;
 }
 
 .sonora-backdrop-wash {
-    background-color: color-mix(
-        in oklab,
-        var(--sonora-backdrop-wash-color)
-            calc(var(--sonora-backdrop-wash-opacity) * 100%),
-        transparent
-    );
+  background-color: color-mix(
+    in oklab,
+    var(--sonora-backdrop-wash-color) calc(var(--sonora-backdrop-wash-opacity) * 100%),
+    transparent
+  );
+}
+
+/*
+ * The now-playing strip opens and closes by animating its height and margin,
+ * so the prompt box below slides instead of jumping. The duration comes from
+ * the strip's COLLAPSE_MS constant, injected inline as
+ * --sonora-strip-collapse so the unmount timer and the transition match.
+ */
+.sonora-strip-collapse {
+  transition:
+    height var(--sonora-strip-collapse) ease-out,
+    opacity var(--sonora-strip-collapse) ease-out,
+    margin-bottom var(--sonora-strip-collapse) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sonora-strip-collapse {
+    transition: none;
+  }
 }
 
 /*
@@ -26,63 +45,87 @@
  * the root attribute while a backdrop is shown.
  */
 .sonora-surface-backdrop {
-    --sonora-backdrop-blur: 64px;
-    --sonora-surface-backdrop-mask: linear-gradient(
-        to bottom,
-        #000 0 3rem,
-        rgb(0 0 0 / 70%) 30%,
-        rgb(0 0 0 / 30%) 60%,
-        rgb(0 0 0 / 10%) 80%,
-        transparent 100%
-    );
+  --sonora-backdrop-blur: 64px;
+  /* Quadratic ease-in (alpha = 1 - t^2): holds the art near the top, then fades faster. */
+  --sonora-surface-backdrop-mask: linear-gradient(
+    to bottom,
+    #000 0%,
+    rgb(0 0 0 / 96%) 20%,
+    rgb(0 0 0 / 84%) 40%,
+    rgb(0 0 0 / 64%) 60%,
+    rgb(0 0 0 / 36%) 80%,
+    rgb(0 0 0 / 19%) 90%,
+    transparent 100%
+  );
 
-    position: absolute;
-    inset-inline: 0;
-    top: var(--bb-app-chrome-row-height, 48px);
-    bottom: var(--sonora-surface-backdrop-bottom, 0px);
-    z-index: -1;
-    pointer-events: none;
-    mask-image: var(--sonora-surface-backdrop-mask);
+  position: absolute;
+  inset-inline: 0;
+  top: var(--bb-app-chrome-row-height, 48px);
+  bottom: var(--sonora-surface-backdrop-bottom, 0px);
+  z-index: -1;
+  pointer-events: none;
+  mask-image: var(--sonora-surface-backdrop-mask);
 }
 
-html[data-sonora-backdrop]
-    :is(#thread-detail-timeline-panel, #root-compose-main-panel) {
-    position: relative;
-    isolation: isolate;
+html[data-sonora-backdrop] :is(#thread-detail-timeline-panel, #root-compose-main-panel) {
+  position: relative;
+  isolation: isolate;
 }
 
-html[data-sonora-backdrop]
-    #thread-detail-timeline-panel
-    [data-page-scroll-viewport] {
-    background-color: transparent;
+html[data-sonora-backdrop] #thread-detail-timeline-panel [data-page-scroll-viewport] {
+  background-color: transparent;
+}
+
+/* The record's 6px center hole is cut out, so the backdrop shows through. */
+.sonora-record {
+  --sonora-record-hole-radius: calc(var(--sonora-record-hole) / 2);
+
+  mask-image: radial-gradient(
+    circle at center,
+    transparent var(--sonora-record-hole-radius),
+    #000 var(--sonora-record-hole-radius)
+  );
+}
+
+/* A still highlight over the spinning record, like light catching vinyl. */
+.sonora-record-sheen {
+  background: conic-gradient(
+    from 200deg,
+    transparent 0 8%,
+    rgb(255 255 255 / 28%) 14%,
+    transparent 22% 58%,
+    rgb(255 255 255 / 16%) 64%,
+    transparent 72%
+  );
+  mix-blend-mode: soft-light;
 }
 
 @keyframes sonora-marquee {
-    from {
-        transform: translateX(0);
-    }
+  from {
+    transform: translateX(0);
+  }
 
-    to {
-        transform: translateX(-50%);
-    }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 @keyframes sonora-backdrop-in {
-    from {
-        opacity: 0;
-    }
+  from {
+    opacity: 0;
+  }
 
-    to {
-        opacity: 1;
-    }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes sonora-backdrop-out {
-    from {
-        opacity: 1;
-    }
+  from {
+    opacity: 1;
+  }
 
-    to {
-        opacity: 0;
-    }
+  to {
+    opacity: 0;
+  }
 }

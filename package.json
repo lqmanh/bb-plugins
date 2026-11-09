@@ -7,11 +7,14 @@
     "install:all": "npm install && bash scripts/run-all.sh install",
     "check": "bash scripts/run-all.sh check",
     "build": "bash scripts/run-all.sh build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "bash scripts/run-all.sh test"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "jsdom": "^29.1.1",
+    "prettier": "3.9.10",
     "typescript": "^5.7.0",
     "vitest": "^5.1.0"
   }

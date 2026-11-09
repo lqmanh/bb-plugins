@@ -2,10 +2,7 @@ import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import plugin from "../../src/server/index.ts";
-import {
-  NOW_PLAYING_RPC_TAG,
-  type NowPlaying,
-} from "../../src/shared/now-playing.ts";
+import { NOW_PLAYING_RPC_TAG, type NowPlaying } from "../../src/shared/now-playing.ts";
 import { FakeProcess } from "../support/fake-process.ts";
 import { NOT_RUNNING_STDERR, snapshot } from "../support/fixtures.ts";
 import { ScriptedSpawn } from "../support/scripted-spawn.ts";
@@ -31,10 +28,7 @@ function watchLine(process: FakeProcess, value: unknown): void {
 async function nowPlaying(
   host: ReturnType<typeof createFakePluginHost>,
 ): Promise<NowPlaying> {
-  return (await host.harness.behavior.callRpc(
-    "nowPlaying",
-    null,
-  )) as NowPlaying;
+  return (await host.harness.behavior.callRpc("nowPlaying", null)) as NowPlaying;
 }
 
 function invalidations(
@@ -44,7 +38,7 @@ function invalidations(
 }
 
 describe("Sonora plugin", () => {
-  it("declares the thread backdrop setting off by default", async () => {
+  it("declares the thread backdrop and now-playing strip settings", async () => {
     const host = createFakePluginHost({ pluginId: "sonora" });
     hosts.push(host);
 
@@ -56,6 +50,13 @@ describe("Sonora plugin", () => {
       type: "boolean",
       label: "Album art behind threads",
       default: false,
+    });
+    expect(
+      host.harness.inspection.registrations.settingsDescriptors.nowPlayingStrip,
+    ).toMatchObject({
+      type: "boolean",
+      label: "Show what's playing above the prompt box",
+      default: true,
     });
   });
 
@@ -77,13 +78,9 @@ describe("Sonora plugin", () => {
       exists: () => false,
     });
 
-    expect(host.harness.inspection.registrations.rpcMethods).toContain(
-      "nowPlaying",
-    );
+    expect(host.harness.inspection.registrations.rpcMethods).toContain("nowPlaying");
     expect(
-      host.harness.inspection.registrations.services.map(
-        (service) => service.name,
-      ),
+      host.harness.inspection.registrations.services.map((service) => service.name),
     ).toContain("watcher");
     expect(await nowPlaying(host)).toMatchObject({
       status: "unavailable",

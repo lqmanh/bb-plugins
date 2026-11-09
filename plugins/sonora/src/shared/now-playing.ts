@@ -15,11 +15,7 @@ export const playbackStateSchema = z.enum([
 export type PlaybackState = z.infer<typeof playbackStateSchema>;
 
 /** Whether the watcher currently has a usable Sonora connection. */
-export const nowPlayingStatusSchema = z.enum([
-  "running",
-  "not-running",
-  "unavailable",
-]);
+export const nowPlayingStatusSchema = z.enum(["running", "not-running", "unavailable"]);
 export type NowPlayingStatus = z.infer<typeof nowPlayingStatusSchema>;
 
 /** An empty cover is the same as no cover; normalize once at the boundary. */

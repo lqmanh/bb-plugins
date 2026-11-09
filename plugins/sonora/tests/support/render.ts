@@ -21,7 +21,5 @@ export function backdropImages(container: ParentNode): HTMLImageElement[] {
 }
 
 export function backdropCovers(container: ParentNode): string[] {
-  return backdropImages(container).map(
-    (image) => image.getAttribute("src") ?? "",
-  );
+  return backdropImages(container).map((image) => image.getAttribute("src") ?? "");
 }

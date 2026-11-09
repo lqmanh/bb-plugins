@@ -90,9 +90,9 @@ describe("parseCurrentLine", () => {
     expect(parseCurrentLine(JSON.stringify({ state: "playing" }))).toEqual({
       kind: "malformed",
     });
-    expect(
-      parseCurrentLine(JSON.stringify({ ...snapshot(), track: null })),
-    ).toEqual({ kind: "malformed" });
+    expect(parseCurrentLine(JSON.stringify({ ...snapshot(), track: null }))).toEqual({
+      kind: "malformed",
+    });
   });
 });
 
@@ -246,11 +246,7 @@ describe("runWatcher", () => {
     expect(current.stdout.encoding).toBe("utf8");
     expect(current.stderr.encoding).toBe("utf8");
     expect(watch.stdout.encoding).toBe("utf8");
-    expect(spawn).toHaveBeenNthCalledWith(2, "sonora", [
-      "watch",
-      "--json",
-      "--position",
-    ]);
+    expect(spawn).toHaveBeenNthCalledWith(2, "sonora", ["watch", "--json", "--position"]);
 
     watch.stdout.send(`${JSON.stringify(snapshot())}\n`);
     controller.abort();
@@ -438,8 +434,7 @@ describe("runWatcher", () => {
       deps: deps({
         spawn: spawn as SpawnWatcherProcess,
         platform: "darwin",
-        exists: (path) =>
-          path === "/Applications/Sonora.app/Contents/MacOS/sonora",
+        exists: (path) => path === "/Applications/Sonora.app/Contents/MacOS/sonora",
         delay: async (ms) => {
           delays.push(ms);
           controller.abort();
@@ -448,10 +443,7 @@ describe("runWatcher", () => {
     });
 
     queueMicrotask(() => {
-      missing.emit(
-        "error",
-        Object.assign(new Error("not found"), { code: "ENOENT" }),
-      );
+      missing.emit("error", Object.assign(new Error("not found"), { code: "ENOENT" }));
     });
 
     await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(2));

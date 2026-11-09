@@ -1,23 +1,12 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useEffect, useLayoutEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import {
-  experimental_usePluginId,
-  experimental_useRpcQuery,
-  useSettings,
-} from "@get-bb/plugin-sdk/app";
+import { experimental_usePluginId, useSettings } from "@get-bb/plugin-sdk/app";
 
-import { nowPlayingRpcContract } from "../shared/now-playing.ts";
-import { CoverBackdrop, useCoverSource } from "./backdrop.tsx";
+import { CoverBackdrop } from "./components/cover-backdrop.tsx";
+import { useCoverSource } from "./lib/cover.ts";
+import { useNowPlaying } from "./lib/now-playing.ts";
 
-const PANEL_IDS = [
-  "thread-detail-timeline-panel",
-  "root-compose-main-panel",
-] as const;
+const PANEL_IDS = ["thread-detail-timeline-panel", "root-compose-main-panel"] as const;
 const ROOT_ATTRIBUTE = "data-sonora-backdrop";
 
 function panelsInDocument(): HTMLElement[] {
@@ -74,9 +63,7 @@ const HEADER_HEIGHT_PX = 48;
 const COMPOSER_FADE_SELECTOR = '[data-overflow-fade="above"]';
 
 function composerFades(panel: HTMLElement): HTMLElement[] {
-  return Array.from(
-    panel.querySelectorAll<HTMLElement>(COMPOSER_FADE_SELECTOR),
-  );
+  return Array.from(panel.querySelectorAll<HTMLElement>(COMPOSER_FADE_SELECTOR));
 }
 
 function composerFadeTop(panel: HTMLElement): number | null {
@@ -154,15 +141,8 @@ export function ThreadBackdrop() {
 
 function ThreadBackdropActive() {
   const pluginId = experimental_usePluginId();
-  const { data } = experimental_useRpcQuery({
-    contract: nowPlayingRpcContract,
-    method: "nowPlaying",
-    input: null,
-  });
-  const rawCover =
-    data?.status === "running" && data.track !== null
-      ? data.track.cover
-      : null;
+  const { track } = useNowPlaying();
+  const rawCover = track === null ? null : track.cover;
   const { cover, onError: handleCoverError } = useCoverSource(rawCover);
   const enabled = cover !== null;
   const panels = useBackdropPanels(enabled);
@@ -192,10 +172,7 @@ function ThreadBackdropActive() {
               } as CSSProperties
             }
           >
-            <CoverBackdrop
-              cover={cover}
-              onError={handleCoverError}
-            />
+            <CoverBackdrop cover={cover} onError={handleCoverError} />
           </div>,
           panel,
           panel.id,

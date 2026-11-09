@@ -6,9 +6,7 @@ import type {
 
 export const NOT_RUNNING_STDERR = "sonora: Sonora is not running\n";
 
-export function track(
-  overrides: Partial<NowPlayingTrack> = {},
-): NowPlayingTrack {
+export function track(overrides: Partial<NowPlayingTrack> = {}): NowPlayingTrack {
   return {
     id: "track-1",
     title: "Night Drive",
@@ -20,9 +18,7 @@ export function track(
   };
 }
 
-export function snapshot(
-  overrides: Partial<SonoraSnapshot> = {},
-): SonoraSnapshot {
+export function snapshot(overrides: Partial<SonoraSnapshot> = {}): SonoraSnapshot {
   return {
     state: "playing",
     track: track(),

@@ -12,12 +12,7 @@ import {
   emptyNowPlaying,
   nowPlayingRpcContract,
 } from "../../src/shared/now-playing.ts";
-import {
-  nextReceivedAt,
-  playing,
-  track,
-  type RpcHandler,
-} from "../support/fixtures.ts";
+import { nextReceivedAt, playing, track, type RpcHandler } from "../support/fixtures.ts";
 import { backdropCovers, settle } from "../support/render.ts";
 
 const THREAD_PANEL_ID = "thread-detail-timeline-panel";
@@ -47,12 +42,16 @@ async function renderOverlay(
     throw new Error("thread backdrop overlay was not registered");
   }
 
-  const slot = renderSlot(registration, {}, {
-    rpc: { nowPlaying },
-    experimental_rpcContract: nowPlayingRpcContract,
-    settings,
-    pluginId: "sonora",
-  });
+  const slot = renderSlot(
+    registration,
+    {},
+    {
+      rpc: { nowPlaying },
+      experimental_rpcContract: nowPlayingRpcContract,
+      settings,
+      pluginId: "sonora",
+    },
+  );
   slots.push(slot);
   await settle();
   return slot;
@@ -91,9 +90,7 @@ describe("Sonora thread backdrop", () => {
     expect(backdropCovers(thread)).toEqual(["https://example.test/cover.jpg"]);
     expect(backdropCovers(compose)).toEqual(["https://example.test/cover.jpg"]);
     expect(
-      thread
-        .querySelector(".sonora-surface-backdrop")
-        ?.getAttribute("data-bb-plugin"),
+      thread.querySelector(".sonora-surface-backdrop")?.getAttribute("data-bb-plugin"),
     ).toBe("sonora");
     expect(document.documentElement.hasAttribute(ROOT_ATTRIBUTE)).toBe(true);
   });
@@ -143,12 +140,10 @@ describe("Sonora thread backdrop", () => {
 
     await renderOverlay(() => playing(), { threadBackdrop: true });
 
-    const wrapper = thread.querySelector<HTMLElement>(
-      ".sonora-surface-backdrop",
+    const wrapper = thread.querySelector<HTMLElement>(".sonora-surface-backdrop");
+    expect(wrapper?.style.getPropertyValue("--sonora-surface-backdrop-bottom")).toBe(
+      "250px",
     );
-    expect(
-      wrapper?.style.getPropertyValue("--sonora-surface-backdrop-bottom"),
-    ).toBe("250px");
   });
 
   it("swaps the cover when the track changes", async () => {
@@ -157,9 +152,7 @@ describe("Sonora thread backdrop", () => {
       track: track({ cover: "https://example.test/cover-a.jpg" }),
     });
     const slot = await renderOverlay(() => current, { threadBackdrop: true });
-    expect(backdropCovers(thread)).toEqual([
-      "https://example.test/cover-a.jpg",
-    ]);
+    expect(backdropCovers(thread)).toEqual(["https://example.test/cover-a.jpg"]);
 
     current = playing({
       track: track({ cover: "https://example.test/cover-b.jpg" }),

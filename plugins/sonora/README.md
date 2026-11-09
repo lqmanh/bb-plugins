@@ -11,6 +11,16 @@ The art starts below the header band and fades out before the reading area.
 Haze, Aura, and Aura Motion draw on the same panels. Turn them off while this
 setting is on.
 
+## Now-playing strip
+
+Settings → Plugins → Sonora → **Show what's playing above the prompt box**
+shows a slim strip above a thread's prompt box while the agent works. It has a
+spinning record, the track and time, a lava lamp in the cover's colors, and a
+progress line. It is on by default; turn it off to keep the composer plain.
+
+The strip stops moving while the track is paused and hides when the turn ends.
+It is thread-only, so it never appears on the New thread screen.
+
 ## Development
 
 ```sh
