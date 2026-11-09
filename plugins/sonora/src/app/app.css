@@ -110,6 +110,11 @@ html[data-sonora-backdrop] #thread-detail-timeline-panel [data-page-scroll-viewp
   }
 }
 
+/* A marquee line that does not fit ends in a soft fade. */
+.sonora-marquee-fade {
+  mask-image: linear-gradient(to right, #000 calc(100% - 1rem), transparent);
+}
+
 @keyframes sonora-backdrop-in {
   from {
     opacity: 0;

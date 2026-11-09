@@ -10,7 +10,7 @@ export const NOW_PLAYING_TICK_MS = 1_000;
  */
 let arrivalAnchor: { receivedAt: number; arrivedAt: number } | null = null;
 
-export function clientArrivedAt(receivedAt: number): number {
+function clientArrivedAt(receivedAt: number): number {
   if (arrivalAnchor?.receivedAt !== receivedAt) {
     arrivalAnchor = { receivedAt, arrivedAt: Date.now() };
   }

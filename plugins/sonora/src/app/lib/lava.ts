@@ -215,7 +215,7 @@ export const lavaSources = {
  * changes on `<html>` or `<body>` (classes, attributes, inline variables), a
  * stylesheet added, removed or replaced in `<head>`, or the system color scheme.
  */
-export function useThemeVersion(enabled = true): number {
+function useThemeVersion(enabled = true): number {
   const [version, setVersion] = useState(0);
 
   useEffect(() => {

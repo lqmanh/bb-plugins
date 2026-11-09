@@ -239,22 +239,30 @@ describe("Sonora now-playing strip", () => {
   });
 });
 
+function renderMarquee(text: string) {
+  const view = render(<MarqueeText text={text} />);
+  const line = view.container.querySelector("p");
+  if (line === null) throw new Error("marquee line was not rendered");
+  return { view, line, truncated: view.getByTitle(text) };
+}
+
+/** Report the line as wider than the box so hover scrolling is enabled. */
+function mockOverflow(element: HTMLElement): void {
+  Object.defineProperty(element, "scrollWidth", {
+    configurable: true,
+    value: 200,
+  });
+  Object.defineProperty(element, "clientWidth", {
+    configurable: true,
+    value: 100,
+  });
+}
+
 describe("now-playing strip marquee", () => {
   it("scrolls only while hovered", () => {
     const text = "A very long track title";
-    const view = render(<MarqueeText text={text} />);
-    const truncated = view.getByTitle(text);
-    Object.defineProperty(truncated, "scrollWidth", {
-      configurable: true,
-      value: 200,
-    });
-    Object.defineProperty(truncated, "clientWidth", {
-      configurable: true,
-      value: 100,
-    });
-
-    const line = view.container.querySelector("p");
-    if (line === null) throw new Error("marquee line was not rendered");
+    const { view, line, truncated } = renderMarquee(text);
+    mockOverflow(truncated);
 
     fireEvent.mouseEnter(line);
     expect(view.queryByTitle(text)).toBeNull();
@@ -263,6 +271,42 @@ describe("now-playing strip marquee", () => {
     fireEvent.mouseLeave(line);
     expect(view.getByTitle(text)).toBeTruthy();
     expect(view.container.querySelector(".inline-flex")).toBeNull();
+
+    view.unmount();
+  });
+
+  it.each([
+    { copyWidth: 300, duration: "7500ms" },
+    { copyWidth: 900, duration: "22500ms" },
+  ])(
+    "scrolls a $copyWidth px line at the same constant speed",
+    ({ copyWidth, duration }) => {
+      const { view, line, truncated } = renderMarquee("A very long track title");
+      mockOverflow(truncated);
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+        new DOMRect(0, 0, copyWidth * 2, 0),
+      );
+
+      fireEvent.mouseEnter(line);
+      const track = view.container.querySelector<HTMLElement>(".inline-flex");
+      expect(track?.style.animationDuration).toBe(duration);
+
+      view.unmount();
+    },
+  );
+
+  it("fades a clipped line instead of an ellipsis", () => {
+    const text = "A very long track title";
+    const { view, line, truncated } = renderMarquee(text);
+    // The line clips cleanly, and a line that fits gets no fade.
+    expect(truncated.className).toBe("block overflow-hidden");
+    expect(line.className).not.toContain("sonora-marquee-fade");
+
+    mockOverflow(truncated);
+    // A prop change re-measures the line and turns the fade on.
+    view.rerender(<MarqueeText text={`${text} `} />);
+
+    expect(line.className).toContain("sonora-marquee-fade");
 
     view.unmount();
   });

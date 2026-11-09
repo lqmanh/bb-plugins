@@ -71,14 +71,12 @@ export type SonoraSnapshot = z.infer<typeof sonoraSnapshotSchema>;
 
 /** The wire answer: a snapshot or the top-level null for "nothing loaded". */
 export const sonoraCurrentSchema = sonoraSnapshotSchema.nullable();
-export type SonoraCurrent = z.infer<typeof sonoraCurrentSchema>;
 
 /** The normalized track the frontend renders. */
 export const nowPlayingTrackSchema = z.object(trackFields).strict();
 export type NowPlayingTrack = z.infer<typeof nowPlayingTrackSchema>;
 
 export const nowPlayingOriginSchema = z.object(originFields).strict();
-export type NowPlayingOrigin = z.infer<typeof nowPlayingOriginSchema>;
 
 /** The RPC response. Always present; `track` is null when nothing is loaded. */
 export const nowPlayingSchema = z

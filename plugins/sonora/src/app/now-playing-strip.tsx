@@ -155,13 +155,12 @@ function StripContent({
       data-sonora-strip=""
       style={STRIP_BACKDROP_STYLE}
       onPointerDown={(event) => event.preventDefault()}
-      className="relative flex h-[var(--sonora-strip-height)] items-center gap-3 overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-xs"
+      className="relative flex h-[var(--sonora-strip-height)] items-center gap-4 overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-xs"
     >
       {cover === null ? null : <CoverBackdrop cover={cover} onError={handleCoverError} />}
       <canvas
         ref={canvasRef}
         aria-hidden="true"
-        data-sonora-lava=""
         className="pointer-events-none absolute inset-0 size-full blur-[8px] saturate-150"
       />
 
@@ -179,7 +178,6 @@ function StripContent({
         {formatTime(current)} / {formatTime(track.duration)}
       </span>
 
-      {/* BBP-12 adds a divider before this slot together with the controls. */}
       <div
         data-sonora-controls-slot=""
         className="relative z-10 flex shrink-0 items-center pe-3"
