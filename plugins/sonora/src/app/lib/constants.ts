@@ -6,6 +6,7 @@ export const FOCUS_RING_CLASS_NAME =
 export const SONORA_ICONS = {
   appleMusic: "sonora/apple-music",
   audioLines: "sonora/audio-lines",
+  bug: "sonora/bug",
   deezer: "sonora/deezer",
   skipBack: "sonora/skip-back",
   skipForward: "sonora/skip-forward",

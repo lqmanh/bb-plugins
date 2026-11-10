@@ -20,6 +20,7 @@
       "experimental_icons": {
         "apple-music": "./icons/applemusic.svg",
         "audio-lines": "./icons/audio-lines.svg",
+        "bug": "./icons/bug.svg",
         "deezer": "./icons/deezer.svg",
         "skip-back": "./icons/skip-back.svg",
         "skip-forward": "./icons/skip-forward.svg",

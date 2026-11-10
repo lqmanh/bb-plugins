@@ -2,12 +2,14 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 
 import { CoverBackdrop } from "./components/cover-backdrop.tsx";
+import { DebugButton } from "./components/debug-button.tsx";
 import { MarqueeText } from "./components/marquee.tsx";
 import { OpenSonoraButton } from "./components/open-sonora-button.tsx";
 import { PlaybackControls } from "./components/playback-controls.tsx";
 import { SeekBar } from "./components/seek-bar.tsx";
 import { FOCUS_RING_CLASS_NAME, SONORA_ICONS } from "./lib/constants.ts";
 import { useCoverSource } from "./lib/cover.ts";
+import { toggleDebugMode } from "./lib/debug.ts";
 import { useNowPlaying } from "./lib/now-playing.ts";
 import { usePlaybackControl } from "./lib/playback-control.ts";
 import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
@@ -21,8 +23,12 @@ const DISCLOSURE_BACKDROP_STYLE = {
 
 function StatusRow({ children }: { children: ReactNode }) {
   return (
-    <div role="status" className={STATE_ROW_CLASS_NAME}>
-      {children}
+    <div
+      role="status"
+      className={`flex min-w-0 items-center gap-2 ${STATE_ROW_CLASS_NAME}`}
+    >
+      <span className="min-w-0 flex-1">{children}</span>
+      <DebugButton />
     </div>
   );
 }
@@ -43,6 +49,7 @@ function ErrorRow({ retry }: { retry: () => Promise<void> }) {
       >
         Retry
       </button>
+      <DebugButton />
     </div>
   );
 }
@@ -108,6 +115,9 @@ export function NowPlayingDisclosure() {
               className={`flex size-full items-center justify-center overflow-hidden rounded-md ${
                 coverUrl === null ? "bg-sidebar-accent text-subtle-foreground" : ""
               } ${gapClass}`}
+              onDoubleClick={(event) => {
+                if (event.altKey) toggleDebugMode();
+              }}
             >
               {coverUrl === null ? (
                 <Icon
@@ -155,12 +165,15 @@ export function NowPlayingDisclosure() {
             {formatTime(track.duration)}
           </span>
         </div>
-        <PlaybackControls
-          state={state}
-          position={shown}
-          control={control}
-          className="justify-center"
-        />
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center">
+          <PlaybackControls
+            state={state}
+            position={shown}
+            control={control}
+            className="col-start-2"
+          />
+          <DebugButton className="col-start-3 justify-self-end" />
+        </div>
         {errorMessage === null ? null : (
           <p role="status" className="text-2xs text-destructive-text">
             {errorMessage}

@@ -1,32 +1,8 @@
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
-import type { MouseEvent, ReactNode } from "react";
 
 import type { PlaybackControl, PlaybackState } from "../../shared/now-playing.ts";
-import { FOCUS_RING_CLASS_NAME, SONORA_ICONS } from "../lib/constants.ts";
-
-const CONTROL_BUTTON_CLASS_NAME = `flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-subtle-foreground transition-colors hover:text-foreground ${FOCUS_RING_CLASS_NAME}`;
-
-function ControlButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      className={CONTROL_BUTTON_CLASS_NAME}
-      onMouseDown={(event: MouseEvent<HTMLButtonElement>) => event.preventDefault()}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
+import { SONORA_ICONS } from "../lib/constants.ts";
+import { ControlButton } from "./control-button.tsx";
 
 /** Play/pause, previous, and next, driven by the shared control hook. */
 export function PlaybackControls({

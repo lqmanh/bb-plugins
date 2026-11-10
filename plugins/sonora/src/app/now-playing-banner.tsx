@@ -14,7 +14,7 @@ import { Record } from "./components/record.tsx";
 import { SeekBar } from "./components/seek-bar.tsx";
 import { SONORA_ICONS } from "./lib/constants.ts";
 import { useCoverSource } from "./lib/cover.ts";
-import { isDebugMode } from "./lib/debug.ts";
+import { useDebugMode } from "./lib/debug.ts";
 import { useLavaLamp, useLavaPalette } from "./lib/lava.ts";
 import { useNowPlaying } from "./lib/now-playing.ts";
 import { usePlaybackControl } from "./lib/playback-control.ts";
@@ -63,7 +63,8 @@ export function NowPlayingBanner() {
   const composer = useComposer();
   const settingOn = values?.nowPlayingBanner !== false;
   const inThread = composer.scope.kind === "thread";
-  const runShown = useRunGrace(composer.isRunning) || isDebugMode();
+  const debug = useDebugMode();
+  const runShown = useRunGrace(composer.isRunning) || debug;
   const { data, track, state } = useNowPlaying(settingOn);
 
   const [lastTrack, setLastTrack] = useState<NowPlayingTrack | null>(track);

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, renderHook } from "@testing-library/react";
+import { act, fireEvent, render, renderHook } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { PluginComposerScope } from "@get-bb/plugin-sdk/app";
 import {
@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MarqueeText } from "../../src/app/components/marquee.tsx";
 import app from "../../src/app/index.tsx";
+import { DEBUG_STORAGE_KEY, isDebugMode, setDebugMode } from "../../src/app/lib/debug.ts";
 import { lavaSources } from "../../src/app/lib/lava.ts";
 import { useRunGrace } from "../../src/app/lib/run-grace.ts";
 import {
@@ -122,6 +123,7 @@ function lavaPalette(slot: RenderedSlot): string[] {
 }
 
 beforeEach(() => {
+  sessionStorage.clear();
   vi.useFakeTimers();
   vi.setSystemTime(CLIENT_START);
   installCanvasContext();
@@ -224,13 +226,45 @@ describe("Sonora now-playing banner", () => {
     const { slot } = await renderBanner(() => playing(), { isRunning: false });
     expect(slot.container.querySelector("[data-sonora-banner]")).toBeNull();
 
-    localStorage.setItem("sonora:debug", "1");
-    try {
-      const debug = await renderBanner(() => playing(), { isRunning: false });
-      expect(debug.slot.container.querySelector("[data-sonora-banner]")).not.toBeNull();
-    } finally {
-      localStorage.removeItem("sonora:debug");
-    }
+    act(() => setDebugMode(true));
+    await settle();
+    await advance(50);
+    expect(slot.container.querySelector("[data-sonora-banner]")).not.toBeNull();
+
+    act(() => setDebugMode(false));
+    await settle();
+    await advance(200);
+    expect(slot.container.querySelector("[data-sonora-banner]")).toBeNull();
+  });
+
+  it("reads debug mode from sessionStorage", async () => {
+    sessionStorage.setItem(DEBUG_STORAGE_KEY, "1");
+
+    const { slot } = await renderBanner(() => playing(), { isRunning: false });
+
+    expect(slot.container.querySelector("[data-sonora-banner]")).not.toBeNull();
+    expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+  });
+
+  it("treats storage that throws as debug mode off", async () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+
+    const { slot } = await renderBanner(() => playing(), { isRunning: false });
+
+    expect(isDebugMode()).toBe(false);
+    expect(slot.container.querySelector("[data-sonora-banner]")).toBeNull();
+  });
+
+  it("does not toggle debug mode from the record", async () => {
+    const { slot } = await renderBanner(() => playing());
+    const record = slot.container.querySelector("[data-sonora-record]");
+    if (record === null) throw new Error("the record was not rendered");
+
+    fireEvent.doubleClick(record, { altKey: true });
+
+    expect(isDebugMode()).toBe(false);
   });
 
   it("never renders on the New thread screen", async () => {
@@ -282,6 +316,26 @@ describe("Sonora now-playing banner", () => {
     fireEvent.click(record);
 
     expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+  });
+
+  it("opens Sonora once from a double-click on the record", async () => {
+    const { slot } = await renderBanner(() => playing());
+    const record = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
+
+    fireEvent.click(record, { detail: 1 });
+    fireEvent.click(record, { detail: 2 });
+
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+    expect(isDebugMode()).toBe(false);
+  });
+
+  it("does not open Sonora on an Alt-click on the record", async () => {
+    const { slot } = await renderBanner(() => playing());
+    const record = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
+
+    fireEvent.click(record, { altKey: true, detail: 1 });
+
+    expect(slot.navigateCalls).toEqual([]);
   });
 
   it("opens the bare Sonora link when the track has none", async () => {

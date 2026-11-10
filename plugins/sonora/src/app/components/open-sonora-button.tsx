@@ -28,7 +28,12 @@ export function OpenSonoraButton({
       aria-label={label}
       className={`relative cursor-pointer ${FOCUS_RING_CLASS_NAME} ${className ?? ""}`}
       onMouseDown={(event) => event.preventDefault()}
-      onClick={() => navigate.openUrl(url)}
+      onClick={(event) => {
+        // Alt+click belongs to the debug gesture, and the second click of a
+        // double-click must not open a second tab.
+        if (event.altKey || event.detail > 1) return;
+        navigate.openUrl(url);
+      }}
     >
       {children}
       {badge === null ? null : <ProviderBadge badge={badge} placement={placement} />}
