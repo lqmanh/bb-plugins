@@ -1,6 +1,7 @@
 import type {
   NowPlaying,
   NowPlayingTrack,
+  PlaybackControl,
   SonoraSnapshot,
 } from "../../src/shared/now-playing.ts";
 
@@ -55,3 +56,5 @@ export function playing(overrides: Partial<NowPlaying> = {}): NowPlaying {
 }
 
 export type RpcHandler = () => NowPlaying | Promise<NowPlaying>;
+
+export type ControlHandler = (input: PlaybackControl) => null | Promise<null>;

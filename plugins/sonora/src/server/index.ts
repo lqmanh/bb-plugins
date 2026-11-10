@@ -5,10 +5,14 @@ import {
   emptyNowPlaying,
   nowPlayingRpcContract,
   type NowPlaying,
+  type PlaybackControl,
   type SonoraSnapshot,
 } from "../shared/now-playing.ts";
 import {
+  DEFAULT_BINARY,
+  formatSeekPosition,
   isMeaningfulChange,
+  runControl,
   runWatcher,
   toNowPlaying,
   type WatcherDeps,
@@ -17,11 +21,20 @@ import {
 /** Test seam: the watcher's process and clock dependencies. */
 export type SonoraPluginDeps = Partial<WatcherDeps>;
 
+/** Only these fixed commands are built here; nothing else reaches the CLI. */
+function controlArgs(control: PlaybackControl): string[] {
+  return control.action === "seek"
+    ? ["seek", formatSeekPosition(control.position)]
+    : [control.action];
+}
+
 export default function plugin(bb: BbPluginApi, overrides: SonoraPluginDeps = {}) {
   const now = overrides.now ?? Date.now;
   let latest: NowPlaying = emptyNowPlaying("unavailable", 0);
   /** `undefined` means no baseline yet; `null` means the last payload was empty. */
   let previous: SonoraSnapshot | null | undefined;
+  /** The binary the watcher last probed, so controls use the same CLI. */
+  let binary: string | null = null;
 
   bb.settings.define({
     threadBackdrop: {
@@ -47,6 +60,10 @@ export default function plugin(bb: BbPluginApi, overrides: SonoraPluginDeps = {}
     nowPlaying() {
       return latest;
     },
+    async control(input) {
+      await runControl(binary ?? DEFAULT_BINARY, controlArgs(input), overrides);
+      return null;
+    },
   });
 
   bb.background.service("watcher", {
@@ -59,6 +76,9 @@ export default function plugin(bb: BbPluginApi, overrides: SonoraPluginDeps = {}
 
       await runWatcher({
         signal,
+        onBinary(found) {
+          binary = found;
+        },
         onStatus(status) {
           if (status === "running") {
             // The seed snapshot follows in the same tick and owns `latest`.

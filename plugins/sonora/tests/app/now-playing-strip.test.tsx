@@ -5,6 +5,7 @@ import {
   loadPluginApp,
   renderSlot,
   type CapturedPluginApp,
+  type PluginRpcTestHandlers,
   type RenderedSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +20,15 @@ import {
   nowPlayingRpcContract,
 } from "../../src/shared/now-playing.ts";
 import { installCanvasContext } from "../support/canvas.ts";
-import { nextReceivedAt, playing, track, type RpcHandler } from "../support/fixtures.ts";
+import { installCodeThemeRuntime, setCodeTheme } from "../support/code-theme.ts";
+import {
+  nextReceivedAt,
+  playing,
+  track,
+  type ControlHandler,
+  type RpcHandler,
+} from "../support/fixtures.ts";
+import { bandedPalette, coverColor, type CoverColor } from "../support/lava.ts";
 import { advance, backdropCovers, settle } from "../support/render.ts";
 
 const CLIENT_START = 1_700_000_000_000;
@@ -35,6 +44,7 @@ async function renderStrip(
     settings?: Record<string, string | number | boolean>;
     isRunning?: boolean;
     scope?: PluginComposerScope;
+    control?: ControlHandler;
   } = {},
 ): Promise<{
   slot: RenderedSlot;
@@ -53,11 +63,15 @@ async function renderStrip(
     throw new Error("now-playing strip banner was not registered");
   }
 
+  const rpc: PluginRpcTestHandlers<typeof nowPlayingRpcContract> = {
+    nowPlaying,
+    control: options.control ?? (() => null),
+  };
   const slot = renderSlot(
     banner,
     {},
     {
-      rpc: { nowPlaying },
+      rpc,
       experimental_rpcContract: nowPlayingRpcContract,
       settings: options.settings,
       composer: {
@@ -99,7 +113,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(CLIENT_START);
   installCanvasContext();
-  vi.spyOn(lavaSources, "sample").mockResolvedValue(["rgb(10 20 30)"]);
+  installCodeThemeRuntime();
+  vi.spyOn(lavaSources, "sample").mockResolvedValue([coverColor(10, 20, 30)]);
   vi.spyOn(lavaSources, "theme").mockReturnValue(["rgb(30 40 50)"]);
 });
 
@@ -120,7 +135,7 @@ describe("Sonora now-playing strip", () => {
     expect(banner).toMatchObject({ id: "now-playing", chrome: "bare" });
   });
 
-  it("shows by default with the track, time, backdrop, record, and empty controls slot", async () => {
+  it("shows by default with the track, time, backdrop, record, controls, and seek bar", async () => {
     const { slot } = await renderStrip(() => playing());
 
     strip(slot);
@@ -149,10 +164,17 @@ describe("Sonora now-playing strip", () => {
       "size-[var(--sonora-record-hole)]",
     );
     expect(slot.container.querySelector('[data-sonora-record="playing"]')).not.toBeNull();
-    expect(slot.container.querySelector("[data-sonora-controls-slot]")?.textContent).toBe(
-      "",
-    );
-    expect(slot.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("42");
+    expect(
+      slot.container.querySelectorAll("[data-sonora-controls-slot] button"),
+    ).toHaveLength(3);
+    expect(slot.getByRole("button", { name: "Previous track" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Next track" })).toBeTruthy();
+    const seek = slot.getByRole("slider");
+    // The surface owns the position, so the bar is not a flex item in the row.
+    expect(seek.className).toContain("absolute");
+    expect(seek.className).not.toContain("relative");
+    expect(seek.getAttribute("aria-valuenow")).toBe("42");
   });
 
   it("advances the time with the shared client clock", async () => {
@@ -162,6 +184,19 @@ describe("Sonora now-playing strip", () => {
     await advance(1_000);
 
     expect(slot.getByText("0:43 / 3:33")).toBeTruthy();
+  });
+
+  it("redraws the shared clock every fifth of a second", async () => {
+    const { slot } = await renderStrip(() => playing());
+    const fill = slot.container.querySelector<HTMLElement>(".sonora-seek-fill");
+    if (fill === null) throw new Error("seek fill was not rendered");
+    const before = fill.style.width;
+
+    // renderStrip advances 50 ms, so 150 ms more reaches the first 200 ms tick.
+    await advance(150);
+
+    expect(fill.style.width).not.toBe(before);
+    expect(slot.getByText("0:42 / 3:33")).toBeTruthy();
   });
 
   it("hides when the setting is off", async () => {
@@ -213,16 +248,54 @@ describe("Sonora now-playing strip", () => {
     expect(slot.container.querySelector("[data-sonora-strip]")).toBeNull();
   });
 
-  it("shows a still strip while paused", async () => {
+  it("shows a still strip with controls while paused", async () => {
     const { slot } = await renderStrip(() => playing({ state: "paused" }));
 
     strip(slot);
     expect(slot.container.querySelector('[data-sonora-record="paused"]')).not.toBeNull();
     expect(slot.getByText("0:42 / 3:33")).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Play" })).toBeTruthy();
+    expect(slot.getByRole("slider")).toBeTruthy();
 
     await advance(2_000);
 
     expect(slot.getByText("0:42 / 3:33")).toBeTruthy();
+  });
+
+  it("keeps the controls while a track loads and offers pause", async () => {
+    const { slot } = await renderStrip(() => playing({ state: "loading" }));
+
+    strip(slot);
+    expect(slot.getByRole("button", { name: "Previous track" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Next track" })).toBeTruthy();
+  });
+
+  it("sends the unrounded shown time on pause", async () => {
+    const control = vi.fn<ControlHandler>(() => null);
+    const { slot } = await renderStrip(() => playing(), { control });
+
+    // renderStrip advances 50 ms, so 150 ms more reaches the first 200 ms tick.
+    await advance(150);
+    expect(slot.getByText("0:42 / 3:33")).toBeTruthy();
+    fireEvent.click(slot.getByRole("button", { name: "Pause" }));
+    await settle();
+
+    expect(control).toHaveBeenCalledWith({ action: "pause", position: 42.2 });
+  });
+
+  it("shows no message when a control fails", async () => {
+    const control = vi.fn<ControlHandler>(() => Promise.reject(new Error("offline")));
+    const { slot } = await renderStrip(() => playing(), { control });
+
+    fireEvent.click(slot.getByRole("button", { name: "Pause" }));
+    // The optimistic pause snaps back; the strip has no room for an error line.
+    expect(slot.getByRole("button", { name: "Play" })).toBeTruthy();
+    await settle();
+
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect(slot.queryByRole("status")).toBeNull();
+    expect(slot.container.textContent).not.toContain("Couldn't");
   });
 
   it("does not take focus from the prompt box on pointer down", async () => {
@@ -349,17 +422,18 @@ describe("now-playing strip lava palette", () => {
         cover: "https://example.test/cover-a.jpg",
       }),
     });
-    vi.mocked(lavaSources.sample).mockResolvedValue(["rgb(1 2 3)"]);
+    vi.mocked(lavaSources.sample).mockResolvedValue([coverColor(1, 2, 3)]);
 
     const { slot } = await renderStrip(() => current);
 
-    expect(lavaPalette(slot)).toEqual(["rgb(1 2 3)"]);
+    const firstTrack = bandedPalette([coverColor(1, 2, 3)], "light");
+    expect(lavaPalette(slot)).toEqual(firstTrack);
     expect(lavaSeed(slot)).toBe("track-a");
     expect(vi.mocked(lavaSources.sample)).toHaveBeenCalledWith(
       "https://example.test/cover-a.jpg",
     );
 
-    let resolveSample: (colors: string[]) => void = () => {};
+    let resolveSample: (colors: CoverColor[]) => void = () => {};
     vi.mocked(lavaSources.sample).mockReturnValue(
       new Promise((resolve) => {
         resolveSample = resolve;
@@ -377,14 +451,14 @@ describe("now-playing strip lava palette", () => {
 
     // The old track's lava holds until the new colors are in.
     expect(lavaSeed(slot)).toBe("track-a");
-    expect(lavaPalette(slot)).toEqual(["rgb(1 2 3)"]);
+    expect(lavaPalette(slot)).toEqual(firstTrack);
 
-    resolveSample(["rgb(4 5 6)"]);
+    resolveSample([coverColor(4, 5, 6)]);
     await settle();
     await advance(50);
 
     expect(lavaSeed(slot)).toBe("track-b");
-    expect(lavaPalette(slot)).toEqual(["rgb(4 5 6)"]);
+    expect(lavaPalette(slot)).toEqual(bandedPalette([coverColor(4, 5, 6)], "light"));
     expect(vi.mocked(lavaSources.sample)).toHaveBeenCalledWith(
       "https://example.test/cover-b.jpg",
     );
@@ -426,29 +500,29 @@ describe("now-playing strip lava palette", () => {
     await advance(50);
     expect(lavaPalette(slot)).toEqual(["rgb(30 40 50)"]);
 
-    document.documentElement.classList.add("dark");
-    try {
-      await settle();
-      await advance(50);
-      expect(lavaPalette(slot)).toEqual(["rgb(200 210 220)"]);
-    } finally {
-      document.documentElement.classList.remove("dark");
-    }
+    await setCodeTheme({ mode: "dark", name: "pierre-dark" });
+    await settle();
+    await advance(50);
+    expect(lavaPalette(slot)).toEqual(["rgb(200 210 220)"]);
   });
 
-  it("keeps cover colors when bb's theme changes", async () => {
-    vi.mocked(lavaSources.sample).mockResolvedValue(["rgb(1 2 3)"]);
+  it("re-bands cover colors when bb's theme changes without re-sampling", async () => {
+    vi.mocked(lavaSources.sample).mockResolvedValue([coverColor(1, 2, 3)]);
     const { slot } = await renderStrip(() => playing());
-    expect(lavaPalette(slot)).toEqual(["rgb(1 2 3)"]);
 
-    vi.mocked(lavaSources.theme).mockReturnValue(["rgb(200 210 220)"]);
-    document.documentElement.classList.add("dark");
-    try {
-      await settle();
-      await advance(50);
-      expect(lavaPalette(slot)).toEqual(["rgb(1 2 3)"]);
-    } finally {
-      document.documentElement.classList.remove("dark");
-    }
+    const light = bandedPalette([coverColor(1, 2, 3)], "light");
+    expect(lavaPalette(slot)).toEqual(light);
+    const seed = lavaSeed(slot);
+    expect(vi.mocked(lavaSources.sample)).toHaveBeenCalledTimes(1);
+
+    await setCodeTheme({ mode: "dark", name: "pierre-dark" });
+    await settle();
+    await advance(50);
+
+    const dark = bandedPalette([coverColor(1, 2, 3)], "dark");
+    expect(dark).not.toEqual(light);
+    expect(lavaPalette(slot)).toEqual(dark);
+    expect(lavaSeed(slot)).toBe(seed);
+    expect(vi.mocked(lavaSources.sample)).toHaveBeenCalledTimes(1);
   });
 });

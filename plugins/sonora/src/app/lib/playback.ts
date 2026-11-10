@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+export { formatTime } from "../../shared/time.ts";
+
 /** How often the shared client-side playback clock advances. */
-export const NOW_PLAYING_TICK_MS = 1_000;
+export const NOW_PLAYING_TICK_MS = 200;
 
 /**
  * Client arrival time of the current snapshot, keyed by the server's
@@ -15,12 +17,6 @@ function clientArrivedAt(receivedAt: number): number {
     arrivalAnchor = { receivedAt, arrivedAt: Date.now() };
   }
   return arrivalAnchor.arrivedAt;
-}
-
-export function formatTime(seconds: number): string {
-  const whole = Math.floor(seconds);
-  const minutes = Math.floor(whole / 60);
-  return `${minutes}:${String(whole % 60).padStart(2, "0")}`;
 }
 
 function displayPosition(

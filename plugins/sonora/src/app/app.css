@@ -100,6 +100,38 @@ html[data-sonora-backdrop] #thread-detail-timeline-panel [data-page-scroll-viewp
   mix-blend-mode: soft-light;
 }
 
+/*
+ * The track, fill, and knob derive their opacities from the surface's
+ * track/fill color pair instead of each surface naming three colors.
+ */
+.sonora-seek-track {
+  background-color: color-mix(in oklab, var(--sonora-seek-track-color) 50%, transparent);
+}
+
+.sonora-seek-fill {
+  background-color: color-mix(in oklab, var(--sonora-seek-color) 75%, transparent);
+}
+
+.sonora-seek-knob {
+  background-color: var(--sonora-seek-color);
+}
+
+/* Clock corrections glide; scrubbing drops these classes and tracks instantly. */
+.sonora-seek-ease-fill {
+  transition: width 200ms ease-out;
+}
+
+.sonora-seek-ease-knob {
+  transition: left 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sonora-seek-ease-fill,
+  .sonora-seek-ease-knob {
+    transition: none;
+  }
+}
+
 @keyframes sonora-marquee {
   from {
     transform: translateX(0);

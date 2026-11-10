@@ -34,7 +34,6 @@ export function MarqueeText({
       setOverflowing(textSpan.scrollWidth > textSpan.clientWidth);
     };
     update();
-    if (typeof ResizeObserver === "undefined") return;
 
     const observer = new ResizeObserver(update);
     observer.observe(container);

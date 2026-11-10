@@ -4,20 +4,27 @@ import {
   loadPluginApp,
   renderSlot,
   type CapturedPluginApp,
+  type PluginRpcTestHandlers,
   type RenderedSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import app from "../../src/app/index.tsx";
 import { SONORA_ICONS } from "../../src/app/lib/constants.ts";
-import { NOW_PLAYING_TICK_MS } from "../../src/app/lib/playback.ts";
+import { PLAYBACK_ERROR_CLEAR_MS } from "../../src/app/lib/playback-control.ts";
 import {
   NOW_PLAYING_RPC_TAG,
   emptyNowPlaying,
   nowPlayingRpcContract,
   type NowPlaying,
 } from "../../src/shared/now-playing.ts";
-import { nextReceivedAt, playing, track, type RpcHandler } from "../support/fixtures.ts";
+import {
+  nextReceivedAt,
+  playing,
+  track,
+  type ControlHandler,
+  type RpcHandler,
+} from "../support/fixtures.ts";
 import { advance, backdropCovers, backdropImages, settle } from "../support/render.ts";
 
 const CLIENT_START = 1_700_000_000_000;
@@ -34,7 +41,10 @@ interface RenderedDisclosure {
   registration: DisclosureRegistration;
 }
 
-async function renderDisclosure(nowPlaying: RpcHandler): Promise<RenderedDisclosure> {
+async function renderDisclosure(
+  nowPlaying: RpcHandler,
+  control: ControlHandler = () => null,
+): Promise<RenderedDisclosure> {
   const captured = await loadPluginApp(app);
   const registration = captured.experimentalSidebarFooterItems.find(
     (item): item is DisclosureRegistration =>
@@ -44,11 +54,15 @@ async function renderDisclosure(nowPlaying: RpcHandler): Promise<RenderedDisclos
     throw new Error("now-playing disclosure was not registered");
   }
 
+  const rpc: PluginRpcTestHandlers<typeof nowPlayingRpcContract> = {
+    nowPlaying,
+    control,
+  };
   const slot = renderSlot(
     registration,
     { dismiss: vi.fn() },
     {
-      rpc: { nowPlaying },
+      rpc,
       experimental_rpcContract: nowPlayingRpcContract,
     },
   );
@@ -128,6 +142,9 @@ describe("Sonora sidebar footer disclosure", () => {
 
     expect(slot.getByRole("status").textContent).toBe(message);
     expect(backdropCovers(slot.container)).toEqual([]);
+    // Controls only exist while a track does.
+    expect(slot.queryByRole("button")).toBeNull();
+    expect(slot.queryByRole("slider")).toBeNull();
   });
 
   it("renders a running track", async () => {
@@ -136,12 +153,175 @@ describe("Sonora sidebar footer disclosure", () => {
     expect(slot.getByText("Night Drive")).toBeTruthy();
     expect(slot.getByText("A, B")).toBeTruthy();
     expect(slot.getByText("Album")).toBeTruthy();
-    expect(slot.getByText("Playing")).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Previous track" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Next track" })).toBeTruthy();
+    expect(
+      slot.getByRole("button", { name: "Previous track" }).parentElement?.className,
+    ).toContain("justify-center");
+    expect(slot.getByRole("slider")).toBeTruthy();
+    // The play/pause button owns the state now, not a badge.
+    expect(slot.queryByText("Playing")).toBeNull();
     expect(backdropCovers(slot.container)).toEqual(["https://example.test/cover.jpg"]);
 
     const [backdropImage] = backdropImages(slot.container);
     expect(backdropImage?.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(backdropImage?.className).not.toContain("sonora-backdrop-in");
+  });
+
+  it.each([
+    {
+      state: "playing" as const,
+      label: "Pause",
+      input: { action: "pause", position: 42 },
+    },
+    {
+      state: "loading" as const,
+      label: "Pause",
+      input: { action: "pause", position: 42 },
+    },
+    { state: "paused" as const, label: "Play", input: { action: "play" } },
+    { state: "idle" as const, label: "Play", input: { action: "play" } },
+    { state: "unknown" as const, label: "Play", input: { action: "play" } },
+  ])("sends $input.action from the $state state", async ({ state, label, input }) => {
+    const control = vi.fn<ControlHandler>(() => null);
+    const { slot } = await renderDisclosure(() => playing({ state }), control);
+
+    fireEvent.click(slot.getByRole("button", { name: label }));
+    await settle();
+
+    expect(control).toHaveBeenCalledWith(input);
+  });
+
+  it("keeps the displayed time steady on a fractional optimistic pause", async () => {
+    let release: () => void = () => {};
+    const control = vi.fn<ControlHandler>(
+      () =>
+        new Promise<null>((resolve) => {
+          release = () => resolve(null);
+        }),
+    );
+    const { slot } = await renderDisclosure(() => playing({ position: 42 }), control);
+    expectPlaybackTime(slot, "0:42", "3:33");
+
+    await advance(1_400);
+    expectPlaybackTime(slot, "0:43", "3:33");
+
+    fireEvent.click(slot.getByRole("button", { name: "Pause" }));
+    await settle();
+
+    // The snapshot still says 0:42; the optimistic pause keeps the unrounded time.
+    expectPlaybackTime(slot, "0:43", "3:33");
+    expect(control).toHaveBeenCalledWith({ action: "pause", position: 43.4 });
+
+    release();
+    await settle();
+    await advance(2_000);
+    expectPlaybackTime(slot, "0:43", "3:33");
+  });
+
+  it("keeps the controls while a track loads and offers pause", async () => {
+    const { slot } = await renderDisclosure(() => playing({ state: "loading" }));
+
+    expect(slot.getByRole("button", { name: "Previous track" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Next track" })).toBeTruthy();
+    expect(slot.getByRole("slider")).toBeTruthy();
+  });
+
+  it("switches play/pause optimistically and keeps the confirmed state", async () => {
+    let current = playing({ state: "paused", position: 42 });
+    let release: () => void = () => {};
+    const control = vi.fn<ControlHandler>(
+      () =>
+        new Promise<null>((resolve) => {
+          release = () => resolve(null);
+        }),
+    );
+    const { slot } = await renderDisclosure(() => current, control);
+
+    fireEvent.click(slot.getByRole("button", { name: "Play" }));
+    // The optimistic read switches before Sonora confirms it.
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expectPlaybackTime(slot, "0:42", "3:33");
+    await settle();
+    expect(control).toHaveBeenCalledWith({ action: "play" });
+
+    // Sonora confirms the real state and position; the prediction gives way.
+    current = playing({ state: "playing", position: 50 });
+    release();
+    await settle();
+    await slot.behavior.experimental_invalidateRpc([NOW_PLAYING_RPC_TAG]);
+    await settle();
+
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expectPlaybackTime(slot, "0:50", "3:33");
+  });
+
+  it("restores the state and names the failed action, then clears it", async () => {
+    let failPause = true;
+    const control = vi.fn<ControlHandler>(async (input) => {
+      if (input.action === "pause" && failPause) throw new Error("offline");
+      return null;
+    });
+    const { slot } = await renderDisclosure(() => playing(), control);
+
+    fireEvent.click(slot.getByRole("button", { name: "Pause" }));
+    expect(slot.getByRole("button", { name: "Play" })).toBeTruthy();
+    await settle();
+
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
+    expect(slot.getByRole("status").textContent).toBe("Couldn't pause.");
+
+    // The next action owns the line, so a success clears the old failure.
+    failPause = false;
+    fireEvent.click(slot.getByRole("button", { name: "Next track" }));
+    await settle();
+    expect(slot.queryByRole("status")).toBeNull();
+  });
+
+  it("clears a failed action after a few seconds", async () => {
+    const control = vi.fn<ControlHandler>(() => Promise.reject(new Error("offline")));
+    const { slot } = await renderDisclosure(() => playing(), control);
+
+    fireEvent.click(slot.getByRole("button", { name: "Pause" }));
+    await settle();
+    expect(slot.getByRole("status").textContent).toBe("Couldn't pause.");
+
+    await advance(PLAYBACK_ERROR_CLEAR_MS);
+    expect(slot.queryByRole("status")).toBeNull();
+  });
+
+  it("jumps to a clicked point and snaps back when the seek fails", async () => {
+    let rejectSeek: (error: Error) => void = () => {};
+    const control = vi.fn<ControlHandler>(
+      () =>
+        new Promise<null>((_resolve, reject) => {
+          rejectSeek = reject;
+        }),
+    );
+    const { slot } = await renderDisclosure(() => playing({ position: 42 }), control);
+    const trackElement = slot.container.querySelector("[data-sonora-seek-track]");
+    if (!(trackElement instanceof HTMLElement)) {
+      throw new Error("seek track was not rendered");
+    }
+    vi.spyOn(trackElement, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(100, 0, 200, 4),
+    );
+    const slider = slot.getByRole("slider");
+
+    fireEvent.pointerDown(slider, { button: 0, clientX: 200 });
+    fireEvent.pointerUp(slider);
+    await settle();
+
+    expect(control).toHaveBeenCalledWith({ action: "seek", position: 107 });
+    expectPlaybackTime(slot, "1:47", "3:33");
+
+    rejectSeek(new Error("offline"));
+    await settle();
+
+    expectPlaybackTime(slot, "0:42", "3:33");
+    expect(slot.getByRole("status").textContent).toBe("Couldn't seek.");
   });
 
   it("interpolates position while playing and clamps it to the duration", async () => {
@@ -150,20 +330,21 @@ describe("Sonora sidebar footer disclosure", () => {
     );
     expectPlaybackTime(slot, "3:30", "3:33");
 
-    await advance(NOW_PLAYING_TICK_MS);
+    await advance(1_000);
     expectPlaybackTime(slot, "3:31", "3:33");
-    expect(slot.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("211");
+    expect(slot.getByRole("slider").getAttribute("aria-valuenow")).toBe("211");
 
     await advance(4_000);
     expect(slot.getAllByText("3:33")).toHaveLength(2);
-    expect(slot.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("213");
+    expect(slot.getByRole("slider").getAttribute("aria-valuenow")).toBe("213");
   });
 
   it("freezes the position while paused", async () => {
     const { slot } = await renderDisclosure(() =>
       playing({ state: "paused", position: 42 }),
     );
-    expect(slot.getByText("Paused")).toBeTruthy();
+    expect(slot.getByRole("button", { name: "Play" })).toBeTruthy();
+    expect(slot.queryByText("Paused")).toBeNull();
     expect(backdropCovers(slot.container)).toEqual(["https://example.test/cover.jpg"]);
 
     await advance(5_000);
@@ -213,16 +394,14 @@ describe("Sonora sidebar footer disclosure", () => {
     expect(backdropCovers(slot.container)).toEqual(["https://example.test/cover-a.jpg"]);
   });
 
-  it("guards a zero duration without dividing by zero", async () => {
+  it("hides the seek bar when the duration is zero", async () => {
     const { slot } = await renderDisclosure(() =>
       playing({ position: 0, track: track({ duration: 0 }) }),
     );
 
-    const progress = slot.getByRole("progressbar");
-    expect(progress.getAttribute("aria-valuemin")).toBe("0");
-    expect(progress.getAttribute("aria-valuemax")).toBeNull();
-    expect(progress.getAttribute("aria-valuenow")).toBeNull();
-    expect(progress.firstElementChild?.getAttribute("style")).toContain("width: 0%");
+    expect(slot.queryByRole("slider")).toBeNull();
+    expect(slot.getAllByText("0:00")).toHaveLength(2);
+    expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
   });
 
   it("falls back to the Sonora glyph when the cover is missing", async () => {

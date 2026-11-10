@@ -97,11 +97,38 @@ export const nowPlayingSchema = z
   .strict();
 export type NowPlaying = z.infer<typeof nowPlayingSchema>;
 
+/**
+ * Skips and play take no argument. Pause carries the number of seconds the
+ * surface shows, for the optimistic read only; seek carries the target
+ * position in whole seconds.
+ */
+export const playbackControlSchema = z.union([
+  z.object({ action: z.enum(["play", "next", "prev"]) }).strict(),
+  z
+    .object({
+      action: z.literal("pause"),
+      position: z.number().finite().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("seek"),
+      position: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+export type PlaybackControl = z.infer<typeof playbackControlSchema>;
+export type PlaybackControlAction = PlaybackControl["action"];
+
 export const nowPlayingRpcContract = defineRpcContract({
   nowPlaying: {
     input: z.null(),
     output: nowPlayingSchema,
     tags: () => [NOW_PLAYING_RPC_TAG],
+  },
+  control: {
+    input: playbackControlSchema,
+    output: z.null(),
   },
 });
 

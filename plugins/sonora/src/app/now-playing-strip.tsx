@@ -8,13 +8,15 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { type NowPlayingTrack, type PlaybackState } from "../shared/now-playing.ts";
 import { CoverBackdrop } from "./components/cover-backdrop.tsx";
 import { MarqueeText } from "./components/marquee.tsx";
-import { PlaybackProgressBar } from "./components/playback-progress.tsx";
+import { PlaybackControls } from "./components/playback-controls.tsx";
 import { Record } from "./components/record.tsx";
+import { SeekBar } from "./components/seek-bar.tsx";
 import { SONORA_ICONS } from "./lib/constants.ts";
 import { useCoverSource } from "./lib/cover.ts";
 import { isDebugMode } from "./lib/debug.ts";
 import { useLavaLamp, useLavaPalette } from "./lib/lava.ts";
 import { useNowPlaying } from "./lib/now-playing.ts";
+import { usePlaybackControl } from "./lib/playback-control.ts";
 import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
 import { useRunGrace } from "./lib/run-grace.ts";
 
@@ -127,8 +129,11 @@ function StripContent({
   visible: boolean;
 }) {
   const { cover, onError: handleCoverError } = useCoverSource(track.cover);
+  const { control, seek } = usePlaybackControl();
+  const [scrub, setScrub] = useState<number | null>(null);
   const playing = state === "playing";
   const current = usePlaybackPosition(playing, position, track.duration, receivedAt);
+  const shown = scrub ?? current;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palette = useLavaPalette(cover, track.id ?? track.title, canvasRef);
 
@@ -171,24 +176,33 @@ function StripContent({
           onCoverError={handleCoverError}
           fallback={<Icon name={SONORA_ICONS.audioLines} className="size-3" />}
         />
-        <MarqueeText text={text} content={content} className="min-w-0 flex-1" />
+        <MarqueeText
+          text={text}
+          content={content}
+          className="min-w-0 flex-1 text-xs leading-4"
+        />
       </div>
 
-      <span className="relative z-10 shrink-0 text-2xs tabular-nums text-subtle-foreground">
-        {formatTime(current)} / {formatTime(track.duration)}
+      <span className="relative z-10 shrink-0 text-2xs leading-4 tabular-nums text-subtle-foreground">
+        {formatTime(shown)} / {formatTime(track.duration)}
       </span>
 
+      {/* The button box keeps the same 12 px inset as the record on the left. */}
       <div
         data-sonora-controls-slot=""
         className="relative z-10 flex shrink-0 items-center pe-3"
-      />
+      >
+        <PlaybackControls state={state} position={shown} control={control} />
+      </div>
 
       {/* Inset by the corner radius so the strip's rounded corners never clip the ends. */}
-      <PlaybackProgressBar
-        current={current}
+      <SeekBar
+        current={shown}
         duration={track.duration}
-        className="absolute inset-x-2 bottom-0 z-10 h-0.5 overflow-hidden rounded-full bg-border/60"
-        fillClassName="h-full bg-card-foreground/80"
+        onSeek={seek}
+        onScrub={setScrub}
+        align="end"
+        className="absolute inset-x-2 bottom-0 z-10"
       />
     </div>
   );

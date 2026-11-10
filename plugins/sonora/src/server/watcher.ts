@@ -1,4 +1,4 @@
-import { spawn as nodeSpawn } from "node:child_process";
+import { execFile as nodeExecFile, spawn as nodeSpawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -14,13 +14,17 @@ import {
   type SonoraSnapshot,
   type SonoraTrack,
 } from "../shared/now-playing.ts";
+import { formatTime } from "../shared/time.ts";
 
+/** The PATH name tried first; macOS bundle paths are only appended after it. */
+export const DEFAULT_BINARY = "sonora";
 /** Position deltas above this are treated as a seek, not a clock tick. */
 const POSITION_JUMP_SECONDS = 2.5;
 const ERROR_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
 const NOT_RUNNING_BACKOFF_CAP_MS = 5_000;
 const WATCH_ENDED_DELAY_MS = 500;
 const CURRENT_TIMEOUT_MS = 5_000;
+const CONTROL_TIMEOUT_MS = 5_000;
 const KILL_GRACE_MS = 3_000;
 
 const playbackStateWithFallback = playbackStateSchema.catch("unknown");
@@ -43,8 +47,27 @@ export interface WatcherProcess {
 
 export type SpawnWatcherProcess = (command: string, args: string[]) => WatcherProcess;
 
+export interface ExecFileOptions {
+  timeout: number;
+  encoding: "utf8";
+}
+
+export type ExecFileCallback = (
+  error: (Error & { code?: number | string | null; killed?: boolean }) | null,
+  stdout: string,
+  stderr: string,
+) => void;
+
+export type ExecFileControl = (
+  file: string,
+  args: string[],
+  options: ExecFileOptions,
+  callback: ExecFileCallback,
+) => void;
+
 export interface WatcherDeps {
   spawn: SpawnWatcherProcess;
+  execFile: ExecFileControl;
   delay: (ms: number, signal: AbortSignal) => Promise<void>;
   now: () => number;
   platform: NodeJS.Platform;
@@ -56,6 +79,8 @@ export interface WatcherDeps {
 export interface RunWatcherOptions {
   signal: AbortSignal;
   onStatus(status: NowPlayingStatus): void;
+  /** Reports the binary that answered the last probe, for playback commands. */
+  onBinary?(binary: string): void;
   /** `null` means Sonora is running with nothing loaded. */
   onSnapshot(snapshot: SonoraSnapshot | null, receivedAt: number): void;
   deps?: Partial<WatcherDeps>;
@@ -213,7 +238,7 @@ export function binaryCandidates(
   const platform = options.platform ?? process.platform;
   const home = options.home ?? homedir();
   const exists = options.exists ?? existsSync;
-  const candidates = ["sonora"];
+  const candidates = [DEFAULT_BINARY];
 
   if (platform === "darwin") {
     for (const candidate of [
@@ -262,6 +287,9 @@ function defaultDeps(): WatcherDeps {
       nodeSpawn(command, args, {
         stdio: ["ignore", "pipe", "pipe"],
       }) as unknown as WatcherProcess,
+    execFile: (file, args, options, callback) => {
+      nodeExecFile(file, args, options, callback);
+    },
     delay: defaultDelay,
     now: Date.now,
     platform: process.platform,
@@ -271,37 +299,69 @@ function defaultDeps(): WatcherDeps {
   };
 }
 
-function runCurrent(
+/**
+ * Format whole seconds the way Sonora's `seek` reads a position. A bare number
+ * is a percentage, so every time carries at least minutes and seconds.
+ */
+export function formatSeekPosition(seconds: number): string {
+  return formatTime(seconds, { hours: true });
+}
+
+interface CommandResult {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Run one short-lived Sonora command and resolve with its output and exit code.
+ * A timeout kills the child and rejects; an optional signal stops it on abort.
+ */
+function runCommand(
   binary: string,
-  signal: AbortSignal,
+  args: string[],
   deps: WatcherDeps,
-): Promise<ProbeResult> {
-  return new Promise((resolve) => {
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<CommandResult> {
+  return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
     let settled = false;
     let timeout: NodeJS.Timeout | undefined;
     let onAbort: (() => void) | null = null;
     let child: WatcherProcess;
-    const finish = (result: ProbeResult) => {
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      if (onAbort !== null && signal !== undefined) {
+        signal.removeEventListener("abort", onAbort);
+      }
+    };
+    const succeed = (result: CommandResult) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
-      if (onAbort) signal.removeEventListener("abort", onAbort);
+      cleanup();
       resolve(result);
+    };
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error instanceof Error ? error : new Error(String(error)));
     };
 
     try {
-      child = startChild(binary, ["current", "--json"], deps);
+      child = startChild(binary, args, deps);
     } catch (error) {
-      resolve({ kind: "error", message: errorMessage(error) });
+      fail(error);
       return;
     }
 
     timeout = setTimeout(() => {
       child.kill("SIGKILL");
-      finish({ kind: "error", message: "sonora current timed out" });
-    }, CURRENT_TIMEOUT_MS);
+      fail(new Error(`sonora ${args[0]} timed out`));
+    }, timeoutMs);
     timeout.unref?.();
 
     child.stdout?.on("data", (chunk) => {
@@ -310,40 +370,84 @@ function runCurrent(
     child.stderr?.on("data", (chunk) => {
       stderr += String(chunk);
     });
-    child.on("error", (error) => {
-      finish(
-        error.code === "ENOENT"
-          ? { kind: "missing" }
-          : { kind: "error", message: error.message },
-      );
-    });
-    child.on("close", (code) => {
-      if (code === 0) {
-        const parsed = parseCurrentLine(stdout);
-        if (parsed.kind === "snapshot") {
-          finish({ kind: "ok", snapshot: parsed.snapshot });
-        } else if (parsed.kind === "empty") {
-          finish({ kind: "ok", snapshot: null });
-        } else {
-          finish({
-            kind: "error",
-            message: "sonora current returned invalid JSON",
-          });
-        }
-      } else if (isNotRunningExit(code, stderr)) {
-        finish({ kind: "not-running" });
-      } else {
-        finish({
-          kind: "error",
-          message: stderr.trim() || `sonora current exited ${code ?? "?"}`,
-        });
-      }
-    });
+    child.on("error", (error) => fail(error));
+    child.on("close", (code) => succeed({ code, stdout, stderr }));
 
-    onAbort = () => child.kill("SIGTERM");
-    if (signal.aborted) onAbort();
-    else signal.addEventListener("abort", onAbort, { once: true });
+    if (signal !== undefined) {
+      onAbort = () => child.kill("SIGTERM");
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
   });
+}
+
+/**
+ * Run one playback command with a given binary and resolve when it exits.
+ * Failures reject with the CLI's message so the RPC reports them to the user.
+ */
+export function runControl(
+  binary: string,
+  args: string[],
+  overrides: Partial<WatcherDeps> = {},
+): Promise<void> {
+  const deps = { ...defaultDeps(), ...overrides };
+  return new Promise((resolve, reject) => {
+    deps.execFile(
+      binary,
+      args,
+      { timeout: CONTROL_TIMEOUT_MS, encoding: "utf8" },
+      (error, _stdout, stderr) => {
+        if (error === null) {
+          resolve();
+          return;
+        }
+        if (stderr.trim().length > 0) {
+          reject(new Error(stderr.trim()));
+        } else if (error.killed) {
+          reject(new Error(`sonora ${args[0]} timed out`));
+        } else if (typeof error.code === "number") {
+          reject(new Error(`sonora ${args[0]} exited ${error.code}`));
+        } else {
+          reject(error);
+        }
+      },
+    );
+  });
+}
+
+async function runCurrent(
+  binary: string,
+  signal: AbortSignal,
+  deps: WatcherDeps,
+): Promise<ProbeResult> {
+  let result: CommandResult;
+  try {
+    result = await runCommand(
+      binary,
+      ["current", "--json"],
+      deps,
+      CURRENT_TIMEOUT_MS,
+      signal,
+    );
+  } catch (error) {
+    return error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT"
+      ? { kind: "missing" }
+      : { kind: "error", message: errorMessage(error) };
+  }
+
+  if (result.code !== 0) {
+    return isNotRunningExit(result.code, result.stderr)
+      ? { kind: "not-running" }
+      : {
+          kind: "error",
+          message: result.stderr.trim() || `sonora current exited ${result.code ?? "?"}`,
+        };
+  }
+
+  const parsed = parseCurrentLine(result.stdout);
+  if (parsed.kind === "snapshot") return { kind: "ok", snapshot: parsed.snapshot };
+  if (parsed.kind === "empty") return { kind: "ok", snapshot: null };
+  return { kind: "error", message: "sonora current returned invalid JSON" };
 }
 
 function runWatch(
@@ -480,6 +584,7 @@ export async function runWatcher(options: RunWatcherOptions): Promise<void> {
 
     notRunningAttempt = 0;
     options.onStatus("running");
+    options.onBinary?.(binary);
     options.onSnapshot(probe.snapshot, deps.now());
     deps.log("info", `Watching Sonora through ${binary}`);
 

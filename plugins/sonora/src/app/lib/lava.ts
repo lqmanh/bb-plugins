@@ -1,3 +1,15 @@
+import { experimental_useCodeTheme } from "@get-bb/plugin-sdk/app";
+import {
+  clampChroma,
+  converter,
+  differenceEuclidean,
+  formatRgb,
+  modeOklab,
+  modeOklch,
+  modeRgb,
+  useMode,
+  type Oklab,
+} from "culori/fn";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { TRACK_FADE_MS } from "./constants.ts";
@@ -10,12 +22,40 @@ const COVER_SAMPLE_SIZE = 32;
 /** Base blob radius as a share of the canvas height. */
 const LAVA_RADIUS = 0.6;
 /**
+ * How far a blob's home spot is moved off its even slot, either side, as a
+ * share of the canvas width (across) and height (down from the middle).
+ */
+const LAVA_HOME_JITTER = 0.05;
+/**
  * How far a blob wanders from its home spot, as a share of the canvas height,
  * either side. Both directions are measured against the height so the motion
  * looks the same however wide the strip is.
  */
 const LAVA_TRAVEL_X = 2;
 const LAVA_TRAVEL_Y = 1;
+/**
+ * Seeded per blob, anywhere in each range: how fast it moves along its path,
+ * and how fast it drifts nearer and farther, relative to that speed.
+ */
+const LAVA_SPEED = [0.15, 0.3] as const;
+const LAVA_DEPTH_RATE = [0.5, 1] as const;
+/**
+ * A slower wave mixed into each blob's loop so it keeps changing shape.
+ * `weight` is its share of the travel; `rateX`/`rateY` its speed relative to
+ * the main wave. Keep the rates different, and not simple fractions: p/q
+ * repeats the path every q laps.
+ */
+const LAVA_SLOW_WAVE = { weight: 0.3, rateX: 0.37, rateY: 0.53 } as const;
+/**
+ * The main wave runs this much faster down than across, so each loop keeps
+ * morphing (round, tilted, flat, the other tilt) instead of tracing one ellipse.
+ */
+const LAVA_MAIN_RATE_Y = 1.13;
+/**
+ * Each blob's speed sways by up to `amount` either side, at `rate` relative to
+ * its main wave, so it sometimes lingers and sometimes hurries.
+ */
+const LAVA_SPEED_SWAY = { amount: 0.3, rate: 0.39 } as const;
 /**
  * Each blob drifts nearer and farther. Its depth runs from 0 (far) to 1
  * (near) and sets, from far to near: its size, its opacity, how much extra
@@ -29,8 +69,9 @@ const LAVA_DEPTH = {
   travel: [0.6, 1.4],
 } as const;
 
-function lerp([far, near]: readonly [number, number], depth: number): number {
-  return far + (near - far) * depth;
+/** The point `t` (0–1) of the way through a range, such as far to near. */
+function lerp([from, to]: readonly [number, number], t: number): number {
+  return from + (to - from) * t;
 }
 /**
  * Moving blobs stretch along their motion by up to this much at full drift
@@ -49,15 +90,49 @@ const THEME_LAVA_TOKENS = [
   "--attention",
   "--foreground",
 ] as const;
+/**
+ * OKLab lightness bands that keep a cover color readable on each surface.
+ * Exported so the two ranges can be tuned without touching the banding code.
+ */
+export const LAVA_DARK_LIGHTNESS = [0.62, 0.82] as const;
+export const LAVA_LIGHT_LIGHTNESS = [0.42, 0.66] as const;
 
-interface Rgb {
+export type LavaTheme = "dark" | "light";
+/** Cover colors are OKLab objects; theme-token fallbacks stay CSS strings. */
+export type LavaColor = string | Oklab;
+
+export interface Rgb {
   r: number;
   g: number;
   b: number;
 }
 
-function distance(a: Rgb, b: Rgb): number {
-  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+useMode(modeRgb);
+useMode(modeOklab);
+useMode(modeOklch);
+
+const toOklab = converter("oklab");
+const colorDistance = differenceEuclidean("oklab");
+/** OKLab distance below which two cover colors are too close to keep both. */
+const PALETTE_DISTANCE = 0.1;
+
+/** Format a palette color for the canvas or the test dataset. */
+export function formatLavaColor(color: LavaColor): string {
+  return typeof color === "string" ? color : formatRgb(color);
+}
+
+/**
+ * Keep each cover color's OKLab hue and chroma, clamping only its lightness
+ * into the band that reads on the current surface. Colors pushed outside sRGB
+ * are gamut-mapped through OKLCH instead of clipped per channel.
+ */
+export function applyLightnessBand(colors: readonly Oklab[], theme: LavaTheme): Oklab[] {
+  const [min, max] = theme === "dark" ? LAVA_DARK_LIGHTNESS : LAVA_LIGHT_LIGHTNESS;
+  return colors.map((color) => {
+    const l = Math.min(max, Math.max(min, color.l));
+    if (l === color.l) return color;
+    return clampChroma({ ...color, l }, "oklch", "rgb");
+  });
 }
 
 function averageColor(bucket: Rgb & { count: number }): Rgb {
@@ -68,16 +143,19 @@ function averageColor(bucket: Rgb & { count: number }): Rgb {
   };
 }
 
+function averageOklab(bucket: Rgb & { count: number }): Oklab {
+  const { r, g, b } = averageColor(bucket);
+  return toOklab({ mode: "rgb", r: r / 255, g: g / 255, b: b / 255 });
+}
+
 /** A darker or lighter companion so a one-color cover still gets two blobs. */
-function companionColor(color: Rgb): Rgb {
-  const lightness = (color.r + color.g + color.b) / 3;
-  const target = lightness > 140 ? 0 : 255;
-  const amount = 0.28;
-  return {
-    r: Math.round(color.r + (target - color.r) * amount),
-    g: Math.round(color.g + (target - color.g) * amount),
-    b: Math.round(color.b + (target - color.b) * amount),
-  };
+function companionColor(color: Oklab): Oklab {
+  const shift = color.l > 0.5 ? -0.2 : 0.2;
+  return clampChroma(
+    { ...color, l: Math.min(1, Math.max(0, color.l + shift)) },
+    "oklch",
+    "rgb",
+  );
 }
 
 /**
@@ -85,7 +163,7 @@ function companionColor(color: Rgb): Rgb {
  * Near-black and near-white pixels are ignored so a dark album edge does not
  * become a blob. A usable but low-variety cover is filled out to two colors.
  */
-export function extractPalette(data: Uint8ClampedArray): string[] {
+export function extractPalette(data: Uint8ClampedArray): Oklab[] {
   const buckets = new Map<number, Rgb & { count: number; weight: number }>();
 
   for (let index = 0; index + 3 < data.length; index += 4) {
@@ -122,11 +200,11 @@ export function extractPalette(data: Uint8ClampedArray): string[] {
 
   const sorted = [...buckets.values()].sort((a, b) => b.weight - a.weight);
   // Strongest buckets first, skipping any too close to a color already taken.
-  const picked: Rgb[] = [];
+  const picked: Oklab[] = [];
   for (const bucket of sorted) {
     if (picked.length >= MAX_PALETTE_COLORS) break;
-    const color = averageColor(bucket);
-    if (picked.every((existing) => distance(existing, color) >= 48)) {
+    const color = averageOklab(bucket);
+    if (picked.every((existing) => colorDistance(existing, color) >= PALETTE_DISTANCE)) {
       picked.push(color);
     }
   }
@@ -135,7 +213,7 @@ export function extractPalette(data: Uint8ClampedArray): string[] {
     if (only !== undefined) picked.push(companionColor(only));
   }
 
-  return picked.map(({ r, g, b }) => `rgb(${r} ${g} ${b})`);
+  return picked;
 }
 
 /**
@@ -188,7 +266,7 @@ function loadCover(url: string): Promise<HTMLImageElement> {
  * CORS headers, so an anonymous read is enough; a local file cover without
  * them rejects and the caller uses the theme palette.
  */
-export async function sampleCoverPalette(url: string): Promise<string[]> {
+export async function sampleCoverPalette(url: string): Promise<Oklab[]> {
   const image = await loadCover(url);
 
   const canvas = document.createElement("canvas");
@@ -210,69 +288,21 @@ export const lavaSources = {
   theme: themePalette,
 };
 
-/**
- * A counter that changes whenever bb's theme might have: light/dark or palette
- * changes on `<html>` or `<body>` (classes, attributes, inline variables), a
- * stylesheet added, removed or replaced in `<head>`, or the system color scheme.
- */
-function useThemeVersion(enabled = true): number {
-  const [version, setVersion] = useState(0);
-
-  useEffect(() => {
-    if (!enabled || typeof document === "undefined") return;
-    const bump = () => setVersion((current) => current + 1);
-
-    const isStylesheet = (node: Node) =>
-      node instanceof HTMLStyleElement || node instanceof HTMLLinkElement;
-    const touchesTheme = (record: MutationRecord) =>
-      record.type === "attributes" ||
-      isStylesheet(record.target) ||
-      Array.from(record.addedNodes).some(isStylesheet) ||
-      Array.from(record.removedNodes).some(isStylesheet);
-
-    let observer: MutationObserver | null = null;
-    if (typeof MutationObserver !== "undefined") {
-      observer = new MutationObserver((records) => {
-        if (records.some(touchesTheme)) bump();
-      });
-      observer.observe(document.documentElement, { attributes: true });
-      if (document.body !== null) {
-        observer.observe(document.body, { attributes: true });
-      }
-      if (document.head !== null) {
-        // Subtree, so a <style> whose text is replaced is noticed too.
-        observer.observe(document.head, { childList: true, subtree: true });
-      }
-    }
-
-    const scheme =
-      typeof window.matchMedia === "function"
-        ? window.matchMedia("(prefers-color-scheme: dark)")
-        : null;
-    scheme?.addEventListener?.("change", bump);
-
-    return () => {
-      observer?.disconnect();
-      scheme?.removeEventListener?.("change", bump);
-    };
-  }, [enabled]);
-
-  return version;
-}
-
 /** A track's lava colors, with the seed that lays its blobs out. */
 export interface LavaPalette {
   seed: string;
-  colors: readonly string[];
+  colors: readonly LavaColor[];
 }
 
 const EMPTY_LAVA_PALETTE: LavaPalette = { seed: "", colors: [] };
 
 /**
- * The palette for one track, from its cover. When the cover has no usable
- * colors (missing, failed, unreadable), the lava uses the host theme colors
- * instead, and follows bb's theme live: switching light/dark or palette
- * re-reads them. The seed changes only together with the colors.
+ * The palette for one track, from its cover. Cover colors keep their hue and
+ * chroma but have their OKLab lightness banded for the current surface, so the
+ * same cover reads on light and dark. When the cover has no usable colors
+ * (missing, failed, unreadable), the lava uses the host theme colors instead.
+ * Both follow bb's theme live; a cover is never re-sampled for a theme change.
+ * The seed changes only together with the colors.
  */
 export function useLavaPalette(
   cover: string | null,
@@ -284,10 +314,10 @@ export function useLavaPalette(
   /** Colors sampled from `cover`, or `null` when the theme fallback is in use. */
   const [sampled, setSampled] = useState<{
     cover: string | null;
-    colors: string[] | null;
+    colors: Oklab[] | null;
   } | null>(null);
   const ready = sampled !== null && sampled.cover === cover;
-  const themeVersion = useThemeVersion(ready && sampled.colors === null);
+  const theme = experimental_useCodeTheme();
 
   useEffect(() => {
     let live = true;
@@ -320,22 +350,37 @@ export function useLavaPalette(
     if (!ready) return;
     const element = elementRef.current;
     if (element === null) return;
-    const colors = sampled.colors ?? lavaSources.theme(element);
-    setPalette((current) =>
-      current.seed === seed && sameColors(current.colors, colors)
-        ? current
-        : { seed, colors },
-    );
-  }, [ready, sampled, seed, themeVersion, elementRef]);
+
+    const show = (colors: readonly LavaColor[]) => {
+      setPalette((current) =>
+        current.seed === seed && sameColors(current.colors, colors)
+          ? current
+          : { seed, colors },
+      );
+    };
+
+    if (sampled.colors !== null) {
+      show(applyLightnessBand(sampled.colors, theme.mode));
+      return;
+    }
+
+    // bb applies new palette tokens in a passive effect, so read after the CSS lands.
+    const frame = requestAnimationFrame(() => {
+      show(lavaSources.theme(element));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [ready, sampled, seed, theme.mode, theme.name, elementRef]);
 
   return palette;
 }
 
 /** One blob's fixed traits, derived from the track so the layout is stable. */
 export interface LavaBlob {
-  color: string;
+  color: LavaColor;
   /** Home spot across the canvas width, 0–1; blobs are spread out evenly. */
-  home: number;
+  homeX: number;
+  /** Home spot down the canvas height, 0–1, around the middle. */
+  homeY: number;
   speed: number;
   phaseX: number;
   phaseY: number;
@@ -344,6 +389,8 @@ export interface LavaBlob {
   phaseZ: number;
   /** How fast the blob drifts nearer and farther, relative to its speed. */
   depthRate: number;
+  /** Phase of its speed sway. */
+  phaseSpeed: number;
 }
 
 function hashSeed(seed: string): number {
@@ -366,29 +413,59 @@ function seededRandom(seed: number): () => number {
   };
 }
 
+/** A seeded value in 0–1, as a home-spot offset of up to ±LAVA_HOME_JITTER. */
+function jitter(value: number): number {
+  return (value - 0.5) * 2 * LAVA_HOME_JITTER;
+}
+
+/**
+ * The order in which blobs claim the evenly spaced home slots. It uses its own
+ * stream so the dominant cover color can move off the left without changing
+ * any other per-blob trait.
+ */
+export function lavaHomeOrder(seed: string, count: number): number[] {
+  const order = Array.from({ length: count }, (_, index) => index);
+  const random = seededRandom(hashSeed(`${seed}:order`));
+  for (let index = order.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(random() * (index + 1));
+    const current = order[index]!;
+    order[index] = order[swap]!;
+    order[swap] = current;
+  }
+  return order;
+}
+
 /**
  * Give each palette color a blob with its own speed, path and depth rhythm.
- * Size, opacity and blur come from depth as it moves.
- * The traits come from `seed` (the track), so the same track always gets the
- * same arrangement and remounting never reshuffles it mid-song.
+ * Size, opacity and blur come from depth as it moves. The home slot comes from
+ * a seeded permutation, so an album's dominant cover color does not always
+ * start on the left. All traits come from `seed` (the track), so the same track
+ * always gets the same arrangement and remounting never reshuffles it mid-song.
  */
-export function lavaBlobs(seed: string, palette: readonly string[]): LavaBlob[] {
+export function lavaBlobs(seed: string, palette: readonly LavaColor[]): LavaBlob[] {
   const random = seededRandom(hashSeed(seed));
-  return palette.map((color, index) => ({
-    color,
-    home: (index + 0.5) / palette.length + (random() - 0.5) * 0.08,
-    speed: 0.14 + random() * 0.16,
-    phaseX: random() * Math.PI * 2,
-    phaseY: random() * Math.PI * 2,
-    phaseSlow: random() * Math.PI * 2,
-    phaseZ: random() * Math.PI * 2,
-    depthRate: 0.6 + random() * 0.5,
-  }));
+  const order = lavaHomeOrder(seed, palette.length);
+  return palette.map((color, index) => {
+    const slot = order[index] ?? index;
+    return {
+      color,
+      homeX: (slot + 0.5) / palette.length + jitter(random()),
+      speed: lerp(LAVA_SPEED, random()),
+      phaseX: random() * Math.PI * 2,
+      phaseY: random() * Math.PI * 2,
+      phaseSlow: random() * Math.PI * 2,
+      phaseZ: random() * Math.PI * 2,
+      depthRate: lerp(LAVA_DEPTH_RATE, random()),
+      // Drawn last so adding it left the other traits of each track unchanged.
+      homeY: 0.5 + jitter(random()),
+      phaseSpeed: random() * Math.PI * 2,
+    };
+  });
 }
 
 interface LavaState {
   seed: string;
-  palette: string[];
+  palette: LavaColor[];
   current: LavaBlob[];
   previous: LavaBlob[];
   fade: number;
@@ -396,8 +473,19 @@ interface LavaState {
   speed: number;
 }
 
-function sameColors(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((color, index) => color === b[index]);
+function sameColor(a: LavaColor, b: LavaColor): boolean {
+  if (typeof a === "string" || typeof b === "string") return a === b;
+  return a.l === b.l && a.a === b.a && a.b === b.b && a.alpha === b.alpha;
+}
+
+function sameColors(a: readonly LavaColor[], b: readonly LavaColor[]): boolean {
+  return a.length === b.length && a.every((color, index) => sameColor(color, b[index]!));
+}
+
+/** One direction's offset, -1–1: the main wave mixed with the slower one. */
+function wave(main: number, slowRate: number, along: number, phaseSlow: number): number {
+  const { weight } = LAVA_SLOW_WAVE;
+  return (1 - weight) * main + weight * Math.sin(along * slowRate + phaseSlow);
 }
 
 function blobPosition(
@@ -409,19 +497,29 @@ function blobPosition(
   // Each blob rises, sinks and wanders around its own home spot, and drifts
   // nearer and farther. A slower second wave in each direction keeps the
   // paths organic; near blobs travel further sideways (parallax).
-  const along = phase * blob.speed;
+  // How far along its path the blob is: its speed, swaying, integrated over
+  // the drift phase so the motion stays smooth.
+  const { amount, rate } = LAVA_SPEED_SWAY;
+  const steady = phase * blob.speed;
+  const along =
+    steady -
+    (amount / rate) *
+      (Math.cos(steady * rate + blob.phaseSpeed) - Math.cos(blob.phaseSpeed));
   const depth = 0.5 + 0.5 * Math.sin(along * blob.depthRate + blob.phaseZ);
   const x =
-    width * blob.home +
+    width * blob.homeX +
     height *
       LAVA_TRAVEL_X *
       lerp(LAVA_DEPTH.travel, depth) *
-      (0.7 * Math.sin(along + blob.phaseX) +
-        0.3 * Math.sin(along * 0.37 + blob.phaseSlow));
+      wave(Math.sin(along + blob.phaseX), LAVA_SLOW_WAVE.rateX, along, blob.phaseSlow);
   /** -1 at the top of the blob's travel, +1 at the bottom. */
-  const lift =
-    0.75 * Math.cos(along + blob.phaseY) + 0.25 * Math.sin(along * 0.53 + blob.phaseSlow);
-  return { x, y: height * 0.5 + height * LAVA_TRAVEL_Y * lift, depth };
+  const lift = wave(
+    Math.cos(along * LAVA_MAIN_RATE_Y + blob.phaseY),
+    LAVA_SLOW_WAVE.rateY,
+    along,
+    blob.phaseSlow,
+  );
+  return { x, y: height * blob.homeY + height * LAVA_TRAVEL_Y * lift, depth };
 }
 
 /** Where one blob is, how near, how big, and how it stretches as it moves. */
@@ -511,7 +609,7 @@ export function drawLavaBlobs(
       context.rotate(-frame.angle);
       context.translate(-frame.x, -frame.y);
     }
-    context.fillStyle = color;
+    context.fillStyle = formatLavaColor(color);
     context.beginPath();
     context.arc(frame.x, frame.y, frame.radius, 0, Math.PI * 2);
     context.fill();
@@ -556,7 +654,7 @@ export function useLavaLamp(
     const canvas = canvasRef.current;
     if (canvas !== null) {
       canvas.dataset.sonoraLavaSeed = seed;
-      canvas.dataset.sonoraLavaPalette = JSON.stringify(palette);
+      canvas.dataset.sonoraLavaPalette = JSON.stringify(palette.map(formatLavaColor));
     }
   }, [canvasRef, palette, seed, state]);
 

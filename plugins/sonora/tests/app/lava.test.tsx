@@ -4,28 +4,31 @@ import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  applyLightnessBand,
   drawLavaBlobs,
   extractPalette,
   lavaBlobFrame,
   lavaBlobs,
+  lavaHomeOrder,
   sampleCoverPalette,
   themePalette,
   useLavaLamp,
+  type LavaBlob,
 } from "../../src/app/lib/lava.ts";
 import {
   fakeContext,
   installCanvasContext,
   type FakeContext,
 } from "../support/canvas.ts";
+import { coverColor, paletteStrings } from "../support/lava.ts";
 import { advance } from "../support/render.ts";
 
 const PALETTE = ["rgb(1 2 3)", "rgb(4 5 6)"];
 
 function pixelData(
   colors: ReadonlyArray<readonly [number, number, number, number?]>,
-  length = colors.length * 4,
 ): Uint8ClampedArray {
-  const data = new Uint8ClampedArray(length);
+  const data = new Uint8ClampedArray(colors.length * 4);
   colors.forEach(([r, g, b, a = 255], index) => {
     data.set([r, g, b, a], index * 4);
   });
@@ -33,6 +36,11 @@ function pixelData(
 }
 
 const OriginalImage = globalThis.Image;
+
+function nonHomeTraits(blob: LavaBlob): Omit<LavaBlob, "homeX"> {
+  const { homeX, ...traits } = blob;
+  return traits;
+}
 
 describe("lava palette", () => {
   it("takes distinct colors from cover pixels", () => {
@@ -43,7 +51,9 @@ describe("lava palette", () => {
       [0, 0, 255],
     ]);
 
-    expect(extractPalette(data)).toEqual(["rgb(255 0 0)", "rgb(0 0 255)"]);
+    const palette = extractPalette(data);
+    expect(paletteStrings(palette)).toEqual(["rgb(255, 0, 0)", "rgb(0, 0, 255)"]);
+    expect(palette.every((color) => color.mode === "oklab")).toBe(true);
   });
 
   it("ignores transparent, near-black, and near-white pixels", () => {
@@ -54,7 +64,10 @@ describe("lava palette", () => {
       [0, 0, 0],
     ]);
 
-    expect(extractPalette(data)).toEqual(["rgb(255 0 0)", "rgb(255 71 71)"]);
+    expect(paletteStrings(extractPalette(data))).toEqual([
+      "rgb(255, 0, 0)",
+      "rgb(153, 0, 0)",
+    ]);
   });
 
   it("returns no colors when every pixel is unusable", () => {
@@ -78,6 +91,30 @@ describe("lava palette", () => {
     ]);
 
     expect(extractPalette(data)).toHaveLength(5);
+  });
+
+  it.each([
+    {
+      theme: "dark" as const,
+      source: { r: 70, g: 90, b: 120 },
+      range: [0.62, 0.82] as const,
+    },
+    {
+      theme: "light" as const,
+      source: { r: 230, g: 240, b: 250 },
+      range: [0.42, 0.66] as const,
+    },
+  ])("bands a $theme cover color while keeping its hue", ({ theme, source, range }) => {
+    const original = coverColor(source.r, source.g, source.b);
+    const [banded] = applyLightnessBand([original], theme);
+    expect(banded!.l).toBeGreaterThanOrEqual(range[0] - 0.01);
+    expect(banded!.l).toBeLessThanOrEqual(range[1] + 0.01);
+    expect(Math.hypot(banded!.a - original.a, banded!.b - original.b)).toBeLessThan(0.02);
+  });
+
+  it("leaves a color already inside the band alone", () => {
+    const color = coverColor(180, 180, 180);
+    expect(applyLightnessBand([color], "dark")).toEqual([color]);
   });
 
   it("reads up to five host theme colors, never the background, and fills to two", () => {
@@ -170,10 +207,8 @@ describe("sampleCoverPalette", () => {
     } as ImageData);
     installCanvasContext(context);
 
-    await expect(sampleCoverPalette("https://example.test/cover.jpg")).resolves.toEqual([
-      "rgb(255 0 0)",
-      "rgb(0 0 255)",
-    ]);
+    const palette = await sampleCoverPalette("https://example.test/cover.jpg");
+    expect(paletteStrings(palette)).toEqual(["rgb(255, 0, 0)", "rgb(0, 0, 255)"]);
 
     expect(images[0]?.crossOrigin).toBe("anonymous");
     expect(images[0]?.referrerPolicy).toBe("no-referrer");
@@ -214,6 +249,29 @@ describe("lava blobs", () => {
   it("gives each palette color one blob, in palette order", () => {
     const palette = ["#111", "#222", "#333", "#444", "#555"];
     expect(lavaBlobs("a", palette).map((blob) => blob.color)).toEqual(palette);
+  });
+
+  it("seeds a deterministic home-slot permutation per track", () => {
+    const order = lavaHomeOrder("track-a", 5);
+    expect(lavaHomeOrder("track-a", 5)).toEqual(order);
+    expect([...order].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+    expect(lavaHomeOrder("track-b", 5)).not.toEqual(order);
+  });
+
+  it("leaves every other blob trait unchanged by the home order", () => {
+    const palette = ["#111", "#222", "#333", "#444", "#555"];
+    const blobs = lavaBlobs("track-a", palette);
+    const order = lavaHomeOrder("track-a", palette.length);
+    blobs.forEach((blob, index) => {
+      expect(
+        Math.abs(blob.homeX - (order[index]! + 0.5) / palette.length),
+      ).toBeLessThanOrEqual(0.05);
+    });
+
+    const short = lavaBlobs("track-a", palette.slice(0, 2));
+    short.forEach((blob, index) => {
+      expect(nonHomeTraits(blobs[index]!)).toEqual(nonHomeTraits(blob));
+    });
   });
 });
 
@@ -315,8 +373,10 @@ describe("lava painting", () => {
         const frame = lavaBlobFrame(blob, width, height, phase);
         // Sideways reach scales from 0.6× (far) to 1.4× (near) of ±200%.
         const reach = height * 2 * (0.6 + 0.8 * frame.depth);
-        expect(Math.abs(frame.x - width * blob.home)).toBeLessThanOrEqual(reach + 1e-9);
-        expect(Math.abs(frame.y - height / 2)).toBeLessThanOrEqual(height + 1e-9);
+        expect(Math.abs(frame.x - width * blob.homeX)).toBeLessThanOrEqual(reach + 1e-9);
+        expect(Math.abs(frame.y - height * blob.homeY)).toBeLessThanOrEqual(
+          height + 1e-9,
+        );
       }
     }
   });
@@ -334,11 +394,16 @@ describe("lava painting", () => {
     expect(stretched).toBeGreaterThan(0);
   });
 
-  it("spreads blob home spots evenly across the width", () => {
-    const homes = lavaBlobs("track-a", ["#1", "#2", "#3", "#4"]).map((blob) => blob.home);
-    homes.forEach((home, index) => {
-      expect(Math.abs(home - (index + 0.5) / 4)).toBeLessThanOrEqual(0.04);
+  it("spreads blob home spots evenly across the width, around the middle", () => {
+    const blobs = lavaBlobs("track-a", ["#1", "#2", "#3", "#4"]);
+    const order = lavaHomeOrder("track-a", blobs.length);
+    blobs.forEach((blob, index) => {
+      expect(
+        Math.abs(blob.homeX - (order[index]! + 0.5) / blobs.length),
+      ).toBeLessThanOrEqual(0.05);
+      expect(Math.abs(blob.homeY - 0.5)).toBeLessThanOrEqual(0.05);
     });
+    expect(new Set(blobs.map((blob) => blob.homeY)).size).toBeGreaterThan(1);
   });
 });
 

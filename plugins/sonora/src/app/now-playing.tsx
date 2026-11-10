@@ -1,22 +1,15 @@
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 
-import { type PlaybackState } from "../shared/now-playing.ts";
 import { CoverBackdrop } from "./components/cover-backdrop.tsx";
 import { MarqueeText } from "./components/marquee.tsx";
-import { PlaybackProgressBar } from "./components/playback-progress.tsx";
-import { SONORA_ICONS } from "./lib/constants.ts";
+import { PlaybackControls } from "./components/playback-controls.tsx";
+import { SeekBar } from "./components/seek-bar.tsx";
+import { FOCUS_RING_CLASS_NAME, SONORA_ICONS } from "./lib/constants.ts";
 import { useCoverSource } from "./lib/cover.ts";
 import { useNowPlaying } from "./lib/now-playing.ts";
+import { usePlaybackControl } from "./lib/playback-control.ts";
 import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
-
-const PLAYBACK_LABELS: Record<PlaybackState, string> = {
-  playing: "Playing",
-  paused: "Paused",
-  loading: "Loading",
-  idle: "Idle",
-  unknown: "Unknown",
-};
 
 const STATE_ROW_CLASS_NAME = "px-2.5 py-2 text-2xs text-subtle-foreground";
 const DISCLOSURE_BACKDROP_STYLE = {
@@ -37,10 +30,12 @@ function ErrorRow({ retry }: { retry: () => Promise<void> }) {
       role="alert"
       className={`flex min-w-0 items-center gap-1.5 ${STATE_ROW_CLASS_NAME}`}
     >
-      <span className="min-w-0 flex-1">Couldn&apos;t load now playing.</span>
+      <span className="min-w-0 flex-1 text-destructive-text">
+        Couldn&apos;t load now playing.
+      </span>
       <button
         type="button"
-        className="shrink-0 rounded-sm text-sidebar-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+        className={`shrink-0 cursor-pointer rounded-sm text-sidebar-foreground underline-offset-2 hover:underline ${FOCUS_RING_CLASS_NAME}`}
         onClick={() => void retry()}
       >
         Retry
@@ -49,35 +44,16 @@ function ErrorRow({ retry }: { retry: () => Promise<void> }) {
   );
 }
 
-function PlaybackProgress({
-  isPlaying,
-  position,
-  duration,
-  receivedAt,
-}: {
-  isPlaying: boolean;
-  position: number | null;
-  duration: number;
-  receivedAt: number;
-}) {
-  const current = usePlaybackPosition(isPlaying, position, duration, receivedAt);
-
-  return (
-    <div className="flex items-center gap-2 text-2xs tabular-nums text-subtle-foreground">
-      <span className="min-w-8 shrink-0 text-left">{formatTime(current)}</span>
-      <PlaybackProgressBar
-        current={current}
-        duration={duration}
-        className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-sidebar-border"
-        fillClassName="h-full rounded-full bg-sidebar-foreground"
-      />
-      <span className="min-w-8 shrink-0 text-right">{formatTime(duration)}</span>
-    </div>
-  );
-}
-
 export function NowPlayingDisclosure() {
   const { data, track, state, error, isLoading, refetch } = useNowPlaying();
+  const { control, seek, errorMessage } = usePlaybackControl();
+  const [scrub, setScrub] = useState<number | null>(null);
+  const current = usePlaybackPosition(
+    state === "playing",
+    data?.position ?? null,
+    track?.duration ?? 0,
+    data?.receivedAt ?? 0,
+  );
   const { cover: coverUrl, onError: handleCoverError } = useCoverSource(
     track?.cover ?? null,
   );
@@ -103,6 +79,7 @@ export function NowPlayingDisclosure() {
   }
 
   const artists = track.artists.length > 0 ? track.artists.join(", ") : null;
+  const shown = scrub ?? current;
 
   return (
     <div
@@ -117,7 +94,7 @@ export function NowPlayingDisclosure() {
           {coverUrl === null ? (
             <div
               aria-hidden="true"
-              className="flex size-10 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-subtle-foreground"
+              className="flex size-11 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-subtle-foreground"
             >
               <Icon name={SONORA_ICONS.audioLines} className="size-5" />
             </div>
@@ -126,7 +103,7 @@ export function NowPlayingDisclosure() {
               src={coverUrl}
               alt={`${track.title} cover`}
               referrerPolicy="no-referrer"
-              className="size-10 shrink-0 rounded-md border border-sidebar-border object-cover"
+              className="size-11 shrink-0 rounded-md border border-sidebar-border object-cover"
               onError={handleCoverError}
             />
           )}
@@ -142,16 +119,34 @@ export function NowPlayingDisclosure() {
               />
             )}
           </div>
-          <span className="shrink-0 self-start rounded-sm border border-sidebar-border px-1.5 py-0.5 text-2xs leading-none text-sidebar-foreground">
-            {PLAYBACK_LABELS[state ?? "unknown"]}
+        </div>
+        <div className="flex items-center gap-2 text-2xs tabular-nums text-subtle-foreground">
+          <span className="min-w-8 shrink-0 text-left">{formatTime(shown)}</span>
+          <SeekBar
+            current={shown}
+            duration={track.duration}
+            onSeek={seek}
+            onScrub={setScrub}
+            className="min-w-0 flex-1"
+            tone="sidebar"
+            restHeight={4}
+            activeHeight={6}
+          />
+          <span className="min-w-8 shrink-0 text-right">
+            {formatTime(track.duration)}
           </span>
         </div>
-        <PlaybackProgress
-          isPlaying={state === "playing"}
-          position={data.position}
-          duration={track.duration}
-          receivedAt={data.receivedAt}
+        <PlaybackControls
+          state={state}
+          position={shown}
+          control={control}
+          className="justify-center"
         />
+        {errorMessage === null ? null : (
+          <p role="status" className="text-2xs text-destructive-text">
+            {errorMessage}
+          </p>
+        )}
       </div>
     </div>
   );

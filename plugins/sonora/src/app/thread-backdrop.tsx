@@ -115,11 +115,6 @@ function useBackdropBottoms(
 
     update();
 
-    if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", update);
-      return () => window.removeEventListener("resize", update);
-    }
-
     const observer = new ResizeObserver(update);
     for (const panel of panels) {
       observer.observe(panel);

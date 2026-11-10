@@ -45,9 +45,7 @@ export function useEasedAnimation(
 
   useEffect(() => {
     const element = elementRef.current;
-    if (element === null || typeof element.animate !== "function") {
-      return;
-    }
+    if (element === null) return;
 
     const animation = element.animate(keyframes, options);
     animationRef.current = animation;
