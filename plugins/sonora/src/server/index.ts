@@ -44,7 +44,7 @@ export default function plugin(bb: BbPluginApi, overrides: SonoraPluginDeps = {}
         "Show the current track's cover behind threads and the New thread screen.",
       default: false,
     },
-    nowPlayingStrip: {
+    nowPlayingBanner: {
       type: "boolean",
       label: "Show what's playing above the prompt box",
       description: "Show the current track above the prompt box while the agent works.",

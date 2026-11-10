@@ -62,7 +62,7 @@ function invalidations(
 }
 
 describe("Sonora plugin", () => {
-  it("declares the thread backdrop and now-playing strip settings", async () => {
+  it("declares the thread backdrop and now-playing banner settings", async () => {
     const host = createFakePluginHost({ pluginId: "sonora" });
     hosts.push(host);
 
@@ -76,7 +76,7 @@ describe("Sonora plugin", () => {
       default: false,
     });
     expect(
-      host.harness.inspection.registrations.settingsDescriptors.nowPlayingStrip,
+      host.harness.inspection.registrations.settingsDescriptors.nowPlayingBanner,
     ).toMatchObject({
       type: "boolean",
       label: "Show what's playing above the prompt box",

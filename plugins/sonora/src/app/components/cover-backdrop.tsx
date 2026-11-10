@@ -55,7 +55,7 @@ function BackdropLayer({
 }
 
 /**
- * Blurred cover art behind a surface, with a cross-fade between covers.
+ * Blurred cover behind a surface, with a cross-fade between covers.
  * Effect values live in `app.css` so other surfaces can reuse the same look;
  * the fade takes `TRACK_FADE_MS`, like the lava.
  */

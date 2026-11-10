@@ -18,9 +18,14 @@
     "branding": {
       "icon": "./icons/audio-lines.svg",
       "experimental_icons": {
+        "apple-music": "./icons/applemusic.svg",
         "audio-lines": "./icons/audio-lines.svg",
+        "deezer": "./icons/deezer.svg",
         "skip-back": "./icons/skip-back.svg",
-        "skip-forward": "./icons/skip-forward.svg"
+        "skip-forward": "./icons/skip-forward.svg",
+        "spotify": "./icons/spotify.svg",
+        "tidal": "./icons/tidal.svg",
+        "youtube-music": "./icons/youtubemusic.svg"
       }
     },
     "server": "./src/server/index.ts",

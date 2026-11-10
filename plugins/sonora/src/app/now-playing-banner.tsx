@@ -19,18 +19,19 @@ import { useLavaLamp, useLavaPalette } from "./lib/lava.ts";
 import { useNowPlaying } from "./lib/now-playing.ts";
 import { usePlaybackControl } from "./lib/playback-control.ts";
 import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
+import { providerBadge, type ProviderBadgeInfo } from "./lib/providers.ts";
 import { useRunGrace } from "./lib/run-grace.ts";
 import { sonoraOpenUrl } from "./lib/sonora-link.ts";
 
-/** Injected as `--sonora-strip-collapse` so the CSS transition matches. */
+/** Injected as `--sonora-banner-collapse` so the CSS transition matches. */
 const COLLAPSE_MS = 200;
 const DEFAULT_GAP_PX = 8;
-/** The strip sits on a card, so its backdrop wash blends into the card color. */
-const STRIP_BACKDROP_STYLE = {
+/** The banner sits on a card, so its backdrop wash blends into the card color. */
+const BANNER_BACKDROP_STYLE = {
   "--sonora-backdrop-wash-color": "var(--card)",
 } as CSSProperties;
 
-/** Keep the content mounted while the strip fades and collapses. */
+/** Keep the content mounted while the banner fades and collapses. */
 function useCollapse(visible: boolean): { mounted: boolean; open: boolean } {
   const [mounted, setMounted] = useState(visible);
   const [open, setOpen] = useState(false);
@@ -57,10 +58,10 @@ function useCollapse(visible: boolean): { mounted: boolean; open: boolean } {
   return { mounted, open };
 }
 
-export function NowPlayingStrip() {
+export function NowPlayingBanner() {
   const { values } = useSettings();
   const composer = useComposer();
-  const settingOn = values?.nowPlayingStrip !== false;
+  const settingOn = values?.nowPlayingBanner !== false;
   const inThread = composer.scope.kind === "thread";
   const runShown = useRunGrace(composer.isRunning) || isDebugMode();
   const { data, track, state } = useNowPlaying(settingOn);
@@ -91,6 +92,9 @@ export function NowPlayingStrip() {
 
   if (!mounted || displayTrack === null) return null;
 
+  const provider = data?.provider ?? null;
+  const badge = providerBadge(provider);
+
   return (
     <div
       ref={rootRef}
@@ -98,18 +102,19 @@ export function NowPlayingStrip() {
       inert={!open}
       style={
         {
-          "--sonora-strip-collapse": `${COLLAPSE_MS}ms`,
-          height: open ? "var(--sonora-strip-height)" : 0,
+          "--sonora-banner-collapse": `${COLLAPSE_MS}ms`,
+          height: open ? "var(--sonora-banner-height)" : 0,
           opacity: open ? 1 : 0,
           marginBottom: open ? 0 : -gap,
         } as CSSProperties
       }
-      className="sonora-strip-collapse overflow-hidden"
+      className="sonora-banner-collapse overflow-hidden"
     >
-      <StripContent
+      <BannerContent
         track={displayTrack}
         state={state}
-        openUrl={sonoraOpenUrl(data?.provider ?? null, displayTrack.id)}
+        openUrl={sonoraOpenUrl(provider, displayTrack.id)}
+        badge={badge}
         position={data?.position ?? null}
         receivedAt={data?.receivedAt ?? 0}
         visible={shouldShow}
@@ -118,10 +123,11 @@ export function NowPlayingStrip() {
   );
 }
 
-function StripContent({
+function BannerContent({
   track,
   state,
   openUrl,
+  badge,
   position,
   receivedAt,
   visible,
@@ -129,6 +135,7 @@ function StripContent({
   track: NowPlayingTrack;
   state: PlaybackState | null;
   openUrl: string;
+  badge: ProviderBadgeInfo | null;
   position: number | null;
   receivedAt: number;
   visible: boolean;
@@ -162,10 +169,10 @@ function StripContent({
     <div
       role="group"
       aria-label="Now playing"
-      data-sonora-strip=""
-      style={STRIP_BACKDROP_STYLE}
+      data-sonora-banner=""
+      style={BANNER_BACKDROP_STYLE}
       onPointerDown={(event) => event.preventDefault()}
-      className="relative flex h-[var(--sonora-strip-height)] items-center gap-4 overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-xs"
+      className="relative flex h-[var(--sonora-banner-height)] items-center gap-4 overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-xs"
     >
       {cover === null ? null : <CoverBackdrop cover={cover} onError={handleCoverError} />}
       <canvas
@@ -175,10 +182,16 @@ function StripContent({
       />
 
       <div className="relative z-10 flex min-w-0 flex-1 items-center gap-4 ps-3">
-        <OpenSonoraButton url={openUrl} className="size-7 shrink-0 rounded-full">
+        <OpenSonoraButton
+          url={openUrl}
+          badge={badge}
+          placement="banner"
+          className="size-7 shrink-0 rounded-full"
+        >
           <Record
             cover={cover}
             playing={playing}
+            badgeGap={badge?.shape}
             onCoverError={handleCoverError}
             fallback={<Icon name={SONORA_ICONS.audioLines} className="size-3" />}
           />
@@ -202,7 +215,7 @@ function StripContent({
         <PlaybackControls state={state} position={shown} control={control} />
       </div>
 
-      {/* Inset by the corner radius so the strip's rounded corners never clip the ends. */}
+      {/* Inset by the corner radius so the banner's rounded corners never clip the ends. */}
       <SeekBar
         current={shown}
         duration={track.duration}

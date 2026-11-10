@@ -28,6 +28,7 @@ import {
   type ControlHandler,
   type RpcHandler,
 } from "../support/fixtures.ts";
+import { NO_BADGE_PROVIDERS, PROVIDER_BADGES } from "../support/providers.ts";
 import { advance, backdropCovers, backdropImages, settle } from "../support/render.ts";
 
 const CLIENT_START = 1_700_000_000_000;
@@ -35,6 +36,30 @@ const OPEN_SONORA_CASES = [
   { name: "cover", make: () => playing() },
   { name: "placeholder", make: () => playing({ track: track({ cover: null }) }) },
 ] as const;
+const BADGE_CASES = PROVIDER_BADGES.flatMap((badge) => [
+  {
+    ...badge,
+    surface: "cover",
+    make: () => playing({ provider: badge.provider }),
+  },
+  {
+    ...badge,
+    surface: "placeholder",
+    make: () => playing({ provider: badge.provider, track: track({ cover: null }) }),
+  },
+]);
+const NO_BADGE_CASES = NO_BADGE_PROVIDERS.flatMap(({ name, provider }) => [
+  {
+    name,
+    surface: "cover",
+    make: () => playing({ provider }),
+  },
+  {
+    name,
+    surface: "placeholder",
+    make: () => playing({ provider, track: track({ cover: null }) }),
+  },
+]);
 
 let slots: RenderedSlot[] = [];
 
@@ -102,7 +127,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("Sonora sidebar footer disclosure", () => {
+describe("Sonora disclosure", () => {
   it("shows a quiet loading row before the first snapshot arrives", async () => {
     const { slot } = await renderDisclosure(() => new Promise(() => {}));
 
@@ -176,9 +201,72 @@ describe("Sonora sidebar footer disclosure", () => {
     expect(backdropImage?.className).not.toContain("sonora-backdrop-in");
   });
 
+  it.each(BADGE_CASES)(
+    "shows the $label badge on the $surface",
+    async ({ provider, label, icon, shape, make }) => {
+      const { slot } = await renderDisclosure(make);
+      const button = slot.getByRole("button", { name: `Open in Sonora (${label})` });
+      const badge = button.querySelector(`[data-sonora-provider-badge="${provider}"]`);
+      const coverElement = button.querySelector("[data-sonora-cover]");
+
+      expect(badge).not.toBeNull();
+      expect(badge?.getAttribute("aria-hidden")).toBe("true");
+      expect(badge?.className).not.toContain("pointer-events-none");
+      expect(badge?.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
+      expect(coverElement?.className).toContain(`sonora-cover-gap-${shape}`);
+    },
+  );
+
+  it.each(NO_BADGE_CASES)(
+    "shows no badge for $name on the $surface",
+    async ({ make }) => {
+      const { slot } = await renderDisclosure(make);
+      const button = slot.getByRole("button", { name: "Open in Sonora" });
+      const coverElement = button.querySelector("[data-sonora-cover]");
+
+      expect(button.querySelector("[data-sonora-provider-badge]")).toBeNull();
+      expect(coverElement?.className).not.toContain("sonora-cover-gap");
+    },
+  );
+
+  it("opens Sonora from the provider badge", async () => {
+    const { slot } = await renderDisclosure(() => playing());
+    const badge = slot.container.querySelector('[data-sonora-provider-badge="spotify"]');
+    if (badge === null) throw new Error("the provider badge was not rendered");
+    expect(badge.className).not.toContain("pointer-events-none");
+    vi.useRealTimers();
+    const user = userEvent.setup();
+
+    await user.click(badge);
+
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+  });
+
+  it("follows the provider when the track changes", async () => {
+    let snapshot = playing({ provider: "spotify" });
+    const { slot } = await renderDisclosure(() => snapshot);
+    expect(
+      slot
+        .getByRole("button", { name: "Open in Sonora (Spotify)" })
+        .querySelector('[data-sonora-provider-badge="spotify"]'),
+    ).not.toBeNull();
+
+    snapshot = playing({ provider: "apple" });
+    await slot.behavior.experimental_invalidateRpc([NOW_PLAYING_RPC_TAG]);
+    await settle();
+
+    const button = slot.getByRole("button", {
+      name: "Open in Sonora (Apple Music)",
+    });
+    expect(button.querySelector('[data-sonora-provider-badge="apple"]')).not.toBeNull();
+    expect(button.querySelector("[data-sonora-cover]")?.className).toContain(
+      "sonora-cover-gap-square",
+    );
+  });
+
   it.each(OPEN_SONORA_CASES)("opens Sonora from the $name", async ({ make }) => {
     const { slot } = await renderDisclosure(make);
-    const button = slot.getByRole("button", { name: "Open in Sonora" });
+    const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
     expect(button.getAttribute("type")).toBe("button");
     fireEvent.click(button);
@@ -191,14 +279,14 @@ describe("Sonora sidebar footer disclosure", () => {
       playing({ track: track({ id: null }) }),
     );
 
-    fireEvent.click(slot.getByRole("button", { name: "Open in Sonora" }));
+    fireEvent.click(slot.getByRole("button", { name: "Open in Sonora (Spotify)" }));
 
     expect(slot.navigateCalls).toEqual([BARE_SONORA_CALL]);
   });
 
   it("activates the cover with Enter and Space", async () => {
     const { slot } = await renderDisclosure(() => playing());
-    const button = slot.getByRole("button", { name: "Open in Sonora" });
+    const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
     vi.useRealTimers();
     const user = userEvent.setup();
 
@@ -214,7 +302,7 @@ describe("Sonora sidebar footer disclosure", () => {
     document.body.append(prompt);
     prompt.focus();
     const { slot } = await renderDisclosure(() => playing());
-    const button = slot.getByRole("button", { name: "Open in Sonora" });
+    const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
     expect(fireEvent.mouseDown(button)).toBe(false);
     expect(document.activeElement).toBe(prompt);

@@ -10,7 +10,7 @@
   --sonora-backdrop-wash-color: var(--background);
   --sonora-backdrop-wash-opacity: 0.65;
   --sonora-record-hole: 6px;
-  --sonora-strip-height: 44px;
+  --sonora-banner-height: 48px;
 }
 
 .sonora-backdrop-wash {
@@ -22,20 +22,20 @@
 }
 
 /*
- * The now-playing strip opens and closes by animating its height and margin,
+ * The now-playing banner opens and closes by animating its height and margin,
  * so the prompt box below slides instead of jumping. The duration comes from
- * the strip's COLLAPSE_MS constant, injected inline as
- * --sonora-strip-collapse so the unmount timer and the transition match.
+ * the banner's COLLAPSE_MS constant, injected inline as
+ * --sonora-banner-collapse so the unmount timer and the transition match.
  */
-.sonora-strip-collapse {
+.sonora-banner-collapse {
   transition:
-    height var(--sonora-strip-collapse) ease-out,
-    opacity var(--sonora-strip-collapse) ease-out,
-    margin-bottom var(--sonora-strip-collapse) ease-out;
+    height var(--sonora-banner-collapse) ease-out,
+    opacity var(--sonora-banner-collapse) ease-out,
+    margin-bottom var(--sonora-banner-collapse) ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sonora-strip-collapse {
+  .sonora-banner-collapse {
     transition: none;
   }
 }
@@ -46,7 +46,7 @@
  */
 .sonora-surface-backdrop {
   --sonora-backdrop-blur: 64px;
-  /* Quadratic ease-in (alpha = 1 - t^2): holds the art near the top, then fades faster. */
+  /* Quadratic ease-in (alpha = 1 - t^2): holds the cover near the top, then fades faster. */
   --sonora-surface-backdrop-mask: linear-gradient(
     to bottom,
     #000 0%,
@@ -76,15 +76,61 @@ html[data-sonora-backdrop] #thread-detail-timeline-panel [data-page-scroll-viewp
   background-color: transparent;
 }
 
-/* The record's 6px center hole is cut out, so the backdrop shows through. */
+/* The record's 6px spindle hole is cut out, so the backdrop shows through. */
 .sonora-record {
   --sonora-record-hole-radius: calc(var(--sonora-record-hole) / 2);
-
-  mask-image: radial-gradient(
+  --sonora-record-hole-mask: radial-gradient(
     circle at center,
     transparent var(--sonora-record-hole-radius),
     #000 var(--sonora-record-hole-radius)
   );
+
+  mask-image: var(--sonora-record-hole-mask);
+}
+
+/*
+ * The badge's gap mask is combined with the record's spindle hole mask. The
+ * record does not rotate, so the gap stays still while the disc spins.
+ */
+.sonora-record-gap-round {
+  mask-image:
+    var(--sonora-record-hole-mask),
+    radial-gradient(
+      circle at calc(100% - 3px) calc(100% - 3px),
+      transparent 0 7.5px,
+      #000 7.5px
+    );
+  mask-composite: intersect;
+}
+
+.sonora-record-gap-square {
+  mask-image:
+    var(--sonora-record-hole-mask),
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2028%2028%22%3E%3Cpath%20fill%3D%22black%22%20fill-rule%3D%22evenodd%22%20d%3D%22M0%200H28V28H0Z%20M22%2017.5H28A4.5%204.5%200%200%201%2032.5%2022V28A4.5%204.5%200%200%201%2028%2032.5H22A4.5%204.5%200%200%201%2017.5%2028V22A4.5%204.5%200%200%201%2022%2017.5Z%22%2F%3E%3C%2Fsvg%3E");
+  mask-composite: intersect;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+}
+
+/*
+ * The disclosure cover's 16px badge sits 4px past the corner with a 2px gap.
+ * The gap mask is 20px across, shaped like the badge, and centered 4px in
+ * from the corner.
+ */
+.sonora-cover-gap-round {
+  mask-image: radial-gradient(
+    circle at calc(100% - 4px) calc(100% - 4px),
+    transparent 0 10px,
+    #000 10px
+  );
+}
+
+.sonora-cover-gap-square {
+  mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2044%2044%22%3E%3Cpath%20fill%3D%22black%22%20fill-rule%3D%22evenodd%22%20d%3D%22M0%200H44V44H0Z%20M36%2030H44A6%206%200%200%201%2050%2036V44A6%206%200%200%201%2044%2050H36A6%206%200%200%201%2030%2044V36A6%206%200%200%201%2036%2030Z%22%2F%3E%3C%2Fsvg%3E");
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
 }
 
 /* A still highlight over the spinning record, like light catching vinyl. */

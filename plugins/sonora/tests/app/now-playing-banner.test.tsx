@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, renderHook } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { PluginComposerScope } from "@get-bb/plugin-sdk/app";
 import {
   loadPluginApp,
@@ -31,16 +32,25 @@ import {
   type RpcHandler,
 } from "../support/fixtures.ts";
 import { bandedPalette, coverColor, type CoverColor } from "../support/lava.ts";
+import { NO_BADGE_PROVIDERS, PROVIDER_BADGES } from "../support/providers.ts";
 import { advance, backdropCovers, settle } from "../support/render.ts";
 
 const CLIENT_START = 1_700_000_000_000;
+const BADGE_CASES = PROVIDER_BADGES.map((badge) => ({
+  ...badge,
+  make: () => playing({ provider: badge.provider }),
+}));
+const NO_BADGE_CASES = NO_BADGE_PROVIDERS.map(({ name, provider }) => ({
+  name,
+  make: () => playing({ provider }),
+}));
 
 type ComposerCustomization = CapturedPluginApp["composerCustomizations"][number];
 type BannerRegistration = NonNullable<ComposerCustomization["banners"]>[number];
 
 let slots: RenderedSlot[] = [];
 
-async function renderStrip(
+async function renderBanner(
   nowPlaying: RpcHandler,
   options: {
     settings?: Record<string, string | number | boolean>;
@@ -55,14 +65,14 @@ async function renderStrip(
 }> {
   const captured = await loadPluginApp(app);
   const customization = captured.composerCustomizations.find(
-    (entry) => entry.id === "now-playing-strip",
+    (entry) => entry.id === "now-playing-banner",
   );
   if (customization === undefined) {
-    throw new Error("now-playing strip was not registered");
+    throw new Error("now-playing banner was not registered");
   }
   const banner = customization.banners?.find((entry) => entry.id === "now-playing");
   if (banner === undefined) {
-    throw new Error("now-playing strip banner was not registered");
+    throw new Error("now-playing banner was not registered");
   }
 
   const rpc: PluginRpcTestHandlers<typeof nowPlayingRpcContract> = {
@@ -89,9 +99,9 @@ async function renderStrip(
   return { slot, customization, banner };
 }
 
-function strip(slot: RenderedSlot): Element {
-  const element = slot.container.querySelector("[data-sonora-strip]");
-  if (element === null) throw new Error("the strip was not rendered");
+function banner(slot: RenderedSlot): Element {
+  const element = slot.container.querySelector("[data-sonora-banner]");
+  if (element === null) throw new Error("the banner was not rendered");
   return element;
 }
 
@@ -126,25 +136,25 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("Sonora now-playing strip", () => {
+describe("Sonora now-playing banner", () => {
   it("registers a bare banner scoped to threads", async () => {
-    const { customization, banner } = await renderStrip(() => playing());
+    const { customization, banner } = await renderBanner(() => playing());
 
     expect(customization).toMatchObject({
-      id: "now-playing-strip",
+      id: "now-playing-banner",
       scopes: ["thread"],
     });
     expect(banner).toMatchObject({ id: "now-playing", chrome: "bare" });
   });
 
   it("shows by default with the track, time, backdrop, record, controls, and seek bar", async () => {
-    const { slot } = await renderStrip(() => playing());
+    const { slot } = await renderBanner(() => playing());
 
-    strip(slot);
+    banner(slot);
     const title = slot.getByText("Night Drive");
     expect(title.className).toContain("text-xs");
     expect(title.className).toContain("font-medium");
-    // The strip sits on a card: its text takes the card's color, never the sidebar's.
+    // The banner sits on a card: its text takes the card's color, never the sidebar's.
     expect(title.className).not.toContain("sidebar");
     const meta = slot.getByText(/A, B · Album/);
     expect(meta.className).toContain("text-2xs");
@@ -156,7 +166,7 @@ describe("Sonora now-playing strip", () => {
     const recordCover = record?.querySelector("img");
     expect(record?.className).not.toContain("bg-foreground");
     expect(recordCover?.className).toContain("size-full");
-    // Only the disc carries the cover and turns; sheen, rim and hole stay still on top.
+    // Only the disc carries the cover and turns; sheen, rim and spindle hole stay still on top.
     expect(recordCover?.parentElement).toBe(disc);
     for (const part of ["sheen", "rim", "hole"]) {
       const element = record?.querySelector(`[data-sonora-record-${part}]`);
@@ -180,7 +190,7 @@ describe("Sonora now-playing strip", () => {
   });
 
   it("advances the time with the shared client clock", async () => {
-    const { slot } = await renderStrip(() => playing());
+    const { slot } = await renderBanner(() => playing());
     expect(slot.getByText("0:42 / 3:33")).toBeTruthy();
 
     await advance(1_000);
@@ -189,12 +199,12 @@ describe("Sonora now-playing strip", () => {
   });
 
   it("redraws the shared clock every fifth of a second", async () => {
-    const { slot } = await renderStrip(() => playing());
+    const { slot } = await renderBanner(() => playing());
     const fill = slot.container.querySelector<HTMLElement>(".sonora-seek-fill");
     if (fill === null) throw new Error("seek fill was not rendered");
     const before = fill.style.width;
 
-    // renderStrip advances 50 ms, so 150 ms more reaches the first 200 ms tick.
+    // renderBanner advances 50 ms, so 150 ms more reaches the first 200 ms tick.
     await advance(150);
 
     expect(fill.style.width).not.toBe(before);
@@ -202,33 +212,33 @@ describe("Sonora now-playing strip", () => {
   });
 
   it("hides when the setting is off", async () => {
-    const { slot } = await renderStrip(() => playing(), {
-      settings: { nowPlayingStrip: false },
+    const { slot } = await renderBanner(() => playing(), {
+      settings: { nowPlayingBanner: false },
     });
 
-    expect(slot.container.querySelector("[data-sonora-strip]")).toBeNull();
+    expect(slot.container.querySelector("[data-sonora-banner]")).toBeNull();
     expect(backdropCovers(slot.container)).toEqual([]);
   });
 
   it("hides when the agent is not running, unless debug mode is on", async () => {
-    const { slot } = await renderStrip(() => playing(), { isRunning: false });
-    expect(slot.container.querySelector("[data-sonora-strip]")).toBeNull();
+    const { slot } = await renderBanner(() => playing(), { isRunning: false });
+    expect(slot.container.querySelector("[data-sonora-banner]")).toBeNull();
 
     localStorage.setItem("sonora:debug", "1");
     try {
-      const debug = await renderStrip(() => playing(), { isRunning: false });
-      expect(debug.slot.container.querySelector("[data-sonora-strip]")).not.toBeNull();
+      const debug = await renderBanner(() => playing(), { isRunning: false });
+      expect(debug.slot.container.querySelector("[data-sonora-banner]")).not.toBeNull();
     } finally {
       localStorage.removeItem("sonora:debug");
     }
   });
 
   it("never renders on the New thread screen", async () => {
-    const { slot } = await renderStrip(() => playing(), {
+    const { slot } = await renderBanner(() => playing(), {
       scope: { kind: "new-thread", projectId: "project-1" },
     });
 
-    expect(slot.container.querySelector("[data-sonora-strip]")).toBeNull();
+    expect(slot.container.querySelector("[data-sonora-banner]")).toBeNull();
   });
 
   it.each([
@@ -245,15 +255,15 @@ describe("Sonora now-playing strip", () => {
       make: () => emptyNowPlaying("unavailable", nextReceivedAt()),
     },
   ])("hides when $name", async ({ make }) => {
-    const { slot } = await renderStrip(make);
+    const { slot } = await renderBanner(make);
 
-    expect(slot.container.querySelector("[data-sonora-strip]")).toBeNull();
+    expect(slot.container.querySelector("[data-sonora-banner]")).toBeNull();
   });
 
-  it("shows a still strip with controls while paused", async () => {
-    const { slot } = await renderStrip(() => playing({ state: "paused" }));
+  it("shows a still banner with controls while paused", async () => {
+    const { slot } = await renderBanner(() => playing({ state: "paused" }));
 
-    strip(slot);
+    banner(slot);
     expect(slot.container.querySelector('[data-sonora-record="paused"]')).not.toBeNull();
     expect(slot.getByText("0:42 / 3:33")).toBeTruthy();
     expect(slot.getByRole("button", { name: "Play" })).toBeTruthy();
@@ -265,8 +275,8 @@ describe("Sonora now-playing strip", () => {
   });
 
   it("opens Sonora from the record", async () => {
-    const { slot } = await renderStrip(() => playing());
-    const record = slot.getByRole("button", { name: "Open in Sonora" });
+    const { slot } = await renderBanner(() => playing());
+    const record = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
     expect(record.getAttribute("type")).toBe("button");
     fireEvent.click(record);
@@ -275,17 +285,61 @@ describe("Sonora now-playing strip", () => {
   });
 
   it("opens the bare Sonora link when the track has none", async () => {
-    const { slot } = await renderStrip(() => playing({ track: track({ id: null }) }));
+    const { slot } = await renderBanner(() => playing({ track: track({ id: null }) }));
 
-    fireEvent.click(slot.getByRole("button", { name: "Open in Sonora" }));
+    fireEvent.click(slot.getByRole("button", { name: "Open in Sonora (Spotify)" }));
 
     expect(slot.navigateCalls).toEqual([BARE_SONORA_CALL]);
   });
 
-  it("keeps the controls while a track loads and offers pause", async () => {
-    const { slot } = await renderStrip(() => playing({ state: "loading" }));
+  it.each(BADGE_CASES)(
+    "shows the $label badge on the record",
+    async ({ provider, label, icon, shape, make }) => {
+      const { slot } = await renderBanner(make);
+      const button = slot.getByRole("button", { name: `Open in Sonora (${label})` });
+      const badge = button.querySelector(`[data-sonora-provider-badge="${provider}"]`);
+      const record = slot.container.querySelector("[data-sonora-record]");
+      if (badge === null) throw new Error("the provider badge was not rendered");
+      if (record === null) throw new Error("the record was not rendered");
 
-    strip(slot);
+      expect(badge.getAttribute("aria-hidden")).toBe("true");
+      expect(badge.className).not.toContain("pointer-events-none");
+      expect(badge.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
+      expect(record.className).toContain(`sonora-record-gap-${shape}`);
+      expect(record.contains(badge)).toBe(false);
+      expect(record.querySelector("[data-sonora-record-disc]")?.contains(badge)).toBe(
+        false,
+      );
+    },
+  );
+
+  it.each(NO_BADGE_CASES)("shows no badge on the record for $name", async ({ make }) => {
+    const { slot } = await renderBanner(make);
+    const button = slot.getByRole("button", { name: "Open in Sonora" });
+    const record = slot.container.querySelector("[data-sonora-record]");
+    if (record === null) throw new Error("the record was not rendered");
+
+    expect(button.querySelector("[data-sonora-provider-badge]")).toBeNull();
+    expect(record.className).not.toContain("sonora-record-gap");
+  });
+
+  it("opens Sonora from the record's provider badge", async () => {
+    const { slot } = await renderBanner(() => playing());
+    const badge = slot.container.querySelector('[data-sonora-provider-badge="spotify"]');
+    if (badge === null) throw new Error("the provider badge was not rendered");
+    expect(badge.className).not.toContain("pointer-events-none");
+    vi.useRealTimers();
+    const user = userEvent.setup();
+
+    await user.click(badge);
+
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+  });
+
+  it("keeps the controls while a track loads and offers pause", async () => {
+    const { slot } = await renderBanner(() => playing({ state: "loading" }));
+
+    banner(slot);
     expect(slot.getByRole("button", { name: "Previous track" })).toBeTruthy();
     expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
     expect(slot.getByRole("button", { name: "Next track" })).toBeTruthy();
@@ -293,9 +347,9 @@ describe("Sonora now-playing strip", () => {
 
   it("sends the unrounded shown time on pause", async () => {
     const control = vi.fn<ControlHandler>(() => null);
-    const { slot } = await renderStrip(() => playing(), { control });
+    const { slot } = await renderBanner(() => playing(), { control });
 
-    // renderStrip advances 50 ms, so 150 ms more reaches the first 200 ms tick.
+    // renderBanner advances 50 ms, so 150 ms more reaches the first 200 ms tick.
     await advance(150);
     expect(slot.getByText("0:42 / 3:33")).toBeTruthy();
     fireEvent.click(slot.getByRole("button", { name: "Pause" }));
@@ -306,10 +360,10 @@ describe("Sonora now-playing strip", () => {
 
   it("shows no message when a control fails", async () => {
     const control = vi.fn<ControlHandler>(() => Promise.reject(new Error("offline")));
-    const { slot } = await renderStrip(() => playing(), { control });
+    const { slot } = await renderBanner(() => playing(), { control });
 
     fireEvent.click(slot.getByRole("button", { name: "Pause" }));
-    // The optimistic pause snaps back; the strip has no room for an error line.
+    // The optimistic pause snaps back; the banner has no room for an error line.
     expect(slot.getByRole("button", { name: "Play" })).toBeTruthy();
     await settle();
 
@@ -323,10 +377,10 @@ describe("Sonora now-playing strip", () => {
     document.body.append(prompt);
     prompt.focus();
 
-    const { slot } = await renderStrip(() => playing());
-    const record = slot.getByRole("button", { name: "Open in Sonora" });
+    const { slot } = await renderBanner(() => playing());
+    const record = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
-    expect(fireEvent.pointerDown(strip(slot))).toBe(false);
+    expect(fireEvent.pointerDown(banner(slot))).toBe(false);
     expect(fireEvent.mouseDown(record)).toBe(false);
     expect(document.activeElement).toBe(prompt);
 
@@ -353,7 +407,7 @@ function mockOverflow(element: HTMLElement): void {
   });
 }
 
-describe("now-playing strip marquee", () => {
+describe("now-playing banner marquee", () => {
   it("scrolls only while hovered", () => {
     const text = "A very long track title";
     const { view, line, truncated } = renderMarquee(text);
@@ -407,7 +461,7 @@ describe("now-playing strip marquee", () => {
   });
 });
 
-describe("now-playing strip run grace", () => {
+describe("now-playing banner run grace", () => {
   it("bridges a short dip, hides after a second, and shows immediately again", async () => {
     const { result, rerender } = renderHook(
       ({ running }: { running: boolean }) => useRunGrace(running),
@@ -436,7 +490,7 @@ describe("now-playing strip run grace", () => {
   });
 });
 
-describe("now-playing strip lava palette", () => {
+describe("now-playing banner lava palette", () => {
   it("takes the palette from a readable cover and switches it with the track once sampled", async () => {
     let current = playing({
       track: track({
@@ -446,7 +500,7 @@ describe("now-playing strip lava palette", () => {
     });
     vi.mocked(lavaSources.sample).mockResolvedValue([coverColor(1, 2, 3)]);
 
-    const { slot } = await renderStrip(() => current);
+    const { slot } = await renderBanner(() => current);
 
     const firstTrack = bandedPalette([coverColor(1, 2, 3)], "light");
     expect(lavaPalette(slot)).toEqual(firstTrack);
@@ -487,7 +541,7 @@ describe("now-playing strip lava palette", () => {
   });
 
   it("falls back to theme colors when the cover is missing", async () => {
-    const { slot } = await renderStrip(() => playing({ track: track({ cover: null }) }));
+    const { slot } = await renderBanner(() => playing({ track: track({ cover: null }) }));
 
     expect(vi.mocked(lavaSources.sample)).not.toHaveBeenCalled();
     expect(lavaPalette(slot)).toEqual(["rgb(30 40 50)"]);
@@ -505,14 +559,14 @@ describe("now-playing strip lava palette", () => {
   ])("falls back to theme colors when the cover $name", async ({ error }) => {
     vi.mocked(lavaSources.sample).mockRejectedValue(error);
 
-    const { slot } = await renderStrip(() => playing());
+    const { slot } = await renderBanner(() => playing());
 
     expect(vi.mocked(lavaSources.sample)).toHaveBeenCalled();
     expect(lavaPalette(slot)).toEqual(["rgb(30 40 50)"]);
   });
 
   it("follows bb's theme live while using the theme fallback", async () => {
-    const { slot } = await renderStrip(() => playing({ track: track({ cover: null }) }));
+    const { slot } = await renderBanner(() => playing({ track: track({ cover: null }) }));
     expect(lavaPalette(slot)).toEqual(["rgb(30 40 50)"]);
 
     vi.mocked(lavaSources.theme).mockReturnValue(["rgb(200 210 220)"]);
@@ -530,7 +584,7 @@ describe("now-playing strip lava palette", () => {
 
   it("re-bands cover colors when bb's theme changes without re-sampling", async () => {
     vi.mocked(lavaSources.sample).mockResolvedValue([coverColor(1, 2, 3)]);
-    const { slot } = await renderStrip(() => playing());
+    const { slot } = await renderBanner(() => playing());
 
     const light = bandedPalette([coverColor(1, 2, 3)], "light");
     expect(lavaPalette(slot)).toEqual(light);

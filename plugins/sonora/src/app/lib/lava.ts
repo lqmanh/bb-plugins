@@ -29,7 +29,7 @@ const LAVA_HOME_JITTER = 0.05;
 /**
  * How far a blob wanders from its home spot, as a share of the canvas height,
  * either side. Both directions are measured against the height so the motion
- * looks the same however wide the strip is.
+ * looks the same however wide the banner is.
  */
 const LAVA_TRAVEL_X = 2;
 const LAVA_TRAVEL_Y = 1;
@@ -160,7 +160,7 @@ function companionColor(color: Oklab): Oklab {
 
 /**
  * Pick 2–5 distinct, reasonably saturated colors from sampled cover pixels.
- * Near-black and near-white pixels are ignored so a dark album edge does not
+ * Near-black and near-white pixels are ignored so a dark cover edge does not
  * become a blob. A usable but low-variety cover is filled out to two colors.
  */
 export function extractPalette(data: Uint8ClampedArray): Oklab[] {
@@ -576,7 +576,7 @@ export function lavaBlobFrame(
  * Paint the blobs far to near, so near ones sit on top. Each blob's depth sets
  * its size, opacity and extra blur; the canvas adds a shared soft blur on top.
  * Sizes follow the canvas height, so blobs look the same however wide the
- * strip is. `alpha` fades a whole palette in or out on a change.
+ * banner is. `alpha` fades a whole palette in or out on a change.
  */
 export function drawLavaBlobs(
   context: CanvasRenderingContext2D,
@@ -618,7 +618,7 @@ export function drawLavaBlobs(
 }
 
 /**
- * Drift the lava while `playing` and the strip is visible. The loop eases the
+ * Drift the lava while `playing` and the banner is visible. The loop eases the
  * drift to a stop, then stops scheduling frames entirely; it also stops when
  * the page is hidden and on unmount. The canvas is drawn at CSS-pixel size,
  * capped at about 30 fps.

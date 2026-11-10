@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from "react";
 
 import { useEasedAnimation, usePageVisible } from "../lib/motion.ts";
+import type { ProviderBadgeShape } from "../lib/providers.ts";
 
 const RECORD_KEYFRAMES: Keyframe[] = [
   { transform: "rotate(0deg)" },
@@ -14,18 +15,20 @@ const RECORD_OPTIONS: KeyframeAnimationOptions = {
 
 /**
  * The cover as a rotating disc. Only the disc turns; the sheen, the outer rim
- * and the center hole stay still on top, the way light sits on a real record.
- * The hole is cut out with a mask (`.sonora-record` in app.css), so whatever
- * is behind the record shows through it.
+ * and the spindle hole stay still on top, the way light sits on a real record.
+ * The spindle hole and the badge's gap are cut out with masks (`.sonora-record`
+ * in app.css), so whatever is behind the record shows through.
  */
 export function Record({
   cover,
   playing,
+  badgeGap,
   fallback,
   onCoverError,
 }: {
   cover: string | null;
   playing: boolean;
+  badgeGap?: ProviderBadgeShape;
   fallback?: ReactNode;
   onCoverError?: () => void;
 }) {
@@ -34,11 +37,13 @@ export function Record({
 
   useEasedAnimation(discRef, RECORD_KEYFRAMES, RECORD_OPTIONS, playing && pageVisible);
 
+  const gapClass = badgeGap === undefined ? "" : `sonora-record-gap-${badgeGap}`;
+
   return (
     <div
       aria-hidden="true"
       data-sonora-record={playing ? "playing" : "paused"}
-      className="sonora-record relative size-7 shrink-0 overflow-hidden rounded-full"
+      className={`sonora-record relative size-7 shrink-0 overflow-hidden rounded-full ${gapClass}`}
     >
       <div
         ref={discRef}
