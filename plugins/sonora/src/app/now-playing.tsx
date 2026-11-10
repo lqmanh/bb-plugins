@@ -3,6 +3,7 @@ import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 
 import { CoverBackdrop } from "./components/cover-backdrop.tsx";
 import { MarqueeText } from "./components/marquee.tsx";
+import { OpenSonoraButton } from "./components/open-sonora-button.tsx";
 import { PlaybackControls } from "./components/playback-controls.tsx";
 import { SeekBar } from "./components/seek-bar.tsx";
 import { FOCUS_RING_CLASS_NAME, SONORA_ICONS } from "./lib/constants.ts";
@@ -10,6 +11,7 @@ import { useCoverSource } from "./lib/cover.ts";
 import { useNowPlaying } from "./lib/now-playing.ts";
 import { usePlaybackControl } from "./lib/playback-control.ts";
 import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
+import { sonoraOpenUrl } from "./lib/sonora-link.ts";
 
 const STATE_ROW_CLASS_NAME = "px-2.5 py-2 text-2xs text-subtle-foreground";
 const DISCLOSURE_BACKDROP_STYLE = {
@@ -79,6 +81,7 @@ export function NowPlayingDisclosure() {
   }
 
   const artists = track.artists.length > 0 ? track.artists.join(", ") : null;
+  const openUrl = sonoraOpenUrl(data.provider, track.id);
   const shown = scrub ?? current;
 
   return (
@@ -91,22 +94,30 @@ export function NowPlayingDisclosure() {
       )}
       <div className="relative flex flex-col gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          {coverUrl === null ? (
-            <div
-              aria-hidden="true"
-              className="flex size-11 shrink-0 items-center justify-center rounded-md bg-sidebar-accent text-subtle-foreground"
-            >
-              <Icon name={SONORA_ICONS.audioLines} className="size-5" />
-            </div>
-          ) : (
-            <img
-              src={coverUrl}
-              alt={`${track.title} cover`}
-              referrerPolicy="no-referrer"
-              className="size-11 shrink-0 rounded-md border border-sidebar-border object-cover"
-              onError={handleCoverError}
-            />
-          )}
+          <OpenSonoraButton
+            url={openUrl}
+            className={`size-11 shrink-0 rounded-md ${
+              coverUrl === null
+                ? "flex items-center justify-center bg-sidebar-accent text-subtle-foreground"
+                : ""
+            }`}
+          >
+            {coverUrl === null ? (
+              <Icon
+                name={SONORA_ICONS.audioLines}
+                aria-hidden="true"
+                className="size-5"
+              />
+            ) : (
+              <img
+                src={coverUrl}
+                alt={`${track.title} cover`}
+                referrerPolicy="no-referrer"
+                className="size-full rounded-md border border-sidebar-border object-cover"
+                onError={handleCoverError}
+              />
+            )}
+          </OpenSonoraButton>
           <div className="min-w-0 flex-1">
             <MarqueeText text={track.title} className="text-xs font-medium" />
             {artists === null ? null : (

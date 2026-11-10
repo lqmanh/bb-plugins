@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   loadPluginApp,
   renderSlot,
@@ -19,7 +20,9 @@ import {
   type NowPlaying,
 } from "../../src/shared/now-playing.ts";
 import {
+  BARE_SONORA_CALL,
   nextReceivedAt,
+  OPEN_SONORA_CALL,
   playing,
   track,
   type ControlHandler,
@@ -28,6 +31,10 @@ import {
 import { advance, backdropCovers, backdropImages, settle } from "../support/render.ts";
 
 const CLIENT_START = 1_700_000_000_000;
+const OPEN_SONORA_CASES = [
+  { name: "cover", make: () => playing() },
+  { name: "placeholder", make: () => playing({ track: track({ cover: null }) }) },
+] as const;
 
 let slots: RenderedSlot[] = [];
 
@@ -167,6 +174,52 @@ describe("Sonora sidebar footer disclosure", () => {
     const [backdropImage] = backdropImages(slot.container);
     expect(backdropImage?.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(backdropImage?.className).not.toContain("sonora-backdrop-in");
+  });
+
+  it.each(OPEN_SONORA_CASES)("opens Sonora from the $name", async ({ make }) => {
+    const { slot } = await renderDisclosure(make);
+    const button = slot.getByRole("button", { name: "Open in Sonora" });
+
+    expect(button.getAttribute("type")).toBe("button");
+    fireEvent.click(button);
+
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+  });
+
+  it("opens the bare Sonora link when the track has none", async () => {
+    const { slot } = await renderDisclosure(() =>
+      playing({ track: track({ id: null }) }),
+    );
+
+    fireEvent.click(slot.getByRole("button", { name: "Open in Sonora" }));
+
+    expect(slot.navigateCalls).toEqual([BARE_SONORA_CALL]);
+  });
+
+  it("activates the cover with Enter and Space", async () => {
+    const { slot } = await renderDisclosure(() => playing());
+    const button = slot.getByRole("button", { name: "Open in Sonora" });
+    vi.useRealTimers();
+    const user = userEvent.setup();
+
+    button.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL, OPEN_SONORA_CALL]);
+  });
+
+  it("does not take focus from the prompt on mousedown", async () => {
+    const prompt = document.createElement("textarea");
+    document.body.append(prompt);
+    prompt.focus();
+    const { slot } = await renderDisclosure(() => playing());
+    const button = slot.getByRole("button", { name: "Open in Sonora" });
+
+    expect(fireEvent.mouseDown(button)).toBe(false);
+    expect(document.activeElement).toBe(prompt);
+
+    prompt.remove();
   });
 
   it.each([

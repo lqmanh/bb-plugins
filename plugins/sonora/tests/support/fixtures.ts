@@ -6,6 +6,11 @@ import type {
 } from "../../src/shared/now-playing.ts";
 
 export const NOT_RUNNING_STDERR = "sonora: Sonora is not running\n";
+export const OPEN_SONORA_CALL = {
+  method: "openUrl",
+  url: "sonora://open?url=https%3A%2F%2Fopen.spotify.com%2Ftrack%2Ftrack-1",
+} as const;
+export const BARE_SONORA_CALL = { method: "openUrl", url: "sonora://" } as const;
 
 export function track(overrides: Partial<NowPlayingTrack> = {}): NowPlayingTrack {
   return {

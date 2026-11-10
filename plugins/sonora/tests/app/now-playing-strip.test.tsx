@@ -22,7 +22,9 @@ import {
 import { installCanvasContext } from "../support/canvas.ts";
 import { installCodeThemeRuntime, setCodeTheme } from "../support/code-theme.ts";
 import {
+  BARE_SONORA_CALL,
   nextReceivedAt,
+  OPEN_SONORA_CALL,
   playing,
   track,
   type ControlHandler,
@@ -262,6 +264,24 @@ describe("Sonora now-playing strip", () => {
     expect(slot.getByText("0:42 / 3:33")).toBeTruthy();
   });
 
+  it("opens Sonora from the record", async () => {
+    const { slot } = await renderStrip(() => playing());
+    const record = slot.getByRole("button", { name: "Open in Sonora" });
+
+    expect(record.getAttribute("type")).toBe("button");
+    fireEvent.click(record);
+
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+  });
+
+  it("opens the bare Sonora link when the track has none", async () => {
+    const { slot } = await renderStrip(() => playing({ track: track({ id: null }) }));
+
+    fireEvent.click(slot.getByRole("button", { name: "Open in Sonora" }));
+
+    expect(slot.navigateCalls).toEqual([BARE_SONORA_CALL]);
+  });
+
   it("keeps the controls while a track loads and offers pause", async () => {
     const { slot } = await renderStrip(() => playing({ state: "loading" }));
 
@@ -304,8 +324,10 @@ describe("Sonora now-playing strip", () => {
     prompt.focus();
 
     const { slot } = await renderStrip(() => playing());
+    const record = slot.getByRole("button", { name: "Open in Sonora" });
 
     expect(fireEvent.pointerDown(strip(slot))).toBe(false);
+    expect(fireEvent.mouseDown(record)).toBe(false);
     expect(document.activeElement).toBe(prompt);
 
     prompt.remove();

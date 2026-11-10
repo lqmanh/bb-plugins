@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { type NowPlayingTrack, type PlaybackState } from "../shared/now-playing.ts";
 import { CoverBackdrop } from "./components/cover-backdrop.tsx";
 import { MarqueeText } from "./components/marquee.tsx";
+import { OpenSonoraButton } from "./components/open-sonora-button.tsx";
 import { PlaybackControls } from "./components/playback-controls.tsx";
 import { Record } from "./components/record.tsx";
 import { SeekBar } from "./components/seek-bar.tsx";
@@ -19,6 +20,7 @@ import { useNowPlaying } from "./lib/now-playing.ts";
 import { usePlaybackControl } from "./lib/playback-control.ts";
 import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
 import { useRunGrace } from "./lib/run-grace.ts";
+import { sonoraOpenUrl } from "./lib/sonora-link.ts";
 
 /** Injected as `--sonora-strip-collapse` so the CSS transition matches. */
 const COLLAPSE_MS = 200;
@@ -107,6 +109,7 @@ export function NowPlayingStrip() {
       <StripContent
         track={displayTrack}
         state={state}
+        openUrl={sonoraOpenUrl(data?.provider ?? null, displayTrack.id)}
         position={data?.position ?? null}
         receivedAt={data?.receivedAt ?? 0}
         visible={shouldShow}
@@ -118,12 +121,14 @@ export function NowPlayingStrip() {
 function StripContent({
   track,
   state,
+  openUrl,
   position,
   receivedAt,
   visible,
 }: {
   track: NowPlayingTrack;
   state: PlaybackState | null;
+  openUrl: string;
   position: number | null;
   receivedAt: number;
   visible: boolean;
@@ -170,12 +175,14 @@ function StripContent({
       />
 
       <div className="relative z-10 flex min-w-0 flex-1 items-center gap-4 ps-3">
-        <Record
-          cover={cover}
-          playing={playing}
-          onCoverError={handleCoverError}
-          fallback={<Icon name={SONORA_ICONS.audioLines} className="size-3" />}
-        />
+        <OpenSonoraButton url={openUrl} className="size-7 shrink-0 rounded-full">
+          <Record
+            cover={cover}
+            playing={playing}
+            onCoverError={handleCoverError}
+            fallback={<Icon name={SONORA_ICONS.audioLines} className="size-3" />}
+          />
+        </OpenSonoraButton>
         <MarqueeText
           text={text}
           content={content}
