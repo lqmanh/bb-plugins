@@ -114,24 +114,34 @@ function cover(slot: RenderedSlot): Element {
   return element;
 }
 
+function focusedPrompt(): HTMLTextAreaElement {
+  const prompt = document.createElement("textarea");
+  document.body.append(prompt);
+  prompt.focus();
+  return prompt;
+}
+
 const EMPTY_STATE_CASES = [
   {
     name: "unavailable",
     make: () => emptyNowPlaying("unavailable", nextReceivedAt()),
-    message: "Can't reach Sonora",
+    message: "Couldn't reach Sonora.",
     role: "status",
+    open: false,
   },
   {
     name: "not-running",
     make: () => emptyNowPlaying("not-running", nextReceivedAt()),
-    message: "Sonora is not running",
+    message: "Sonora isn't running.",
     role: "status",
+    open: true,
   },
   {
     name: "nothing playing",
     make: () => emptyNowPlaying("running", nextReceivedAt()),
-    message: "Nothing playing",
+    message: "Nothing is playing.",
     role: "status",
+    open: false,
   },
 ] as const;
 
@@ -176,7 +186,8 @@ describe("Sonora disclosure", () => {
   it("shows a quiet loading row before the first snapshot arrives", async () => {
     const { slot } = await renderDisclosure(() => new Promise(() => {}));
 
-    expect(slot.getByRole("status").textContent).toMatch(/loading/i);
+    expect(slot.getByRole("status").textContent).toBe("Loading now playing…");
+    expect(slot.queryByRole("button", { name: "Open" })).toBeNull();
     expect(backdropCovers(slot.container)).toEqual([]);
   });
 
@@ -191,6 +202,7 @@ describe("Sonora disclosure", () => {
     });
 
     expect(slot.getByRole("alert").textContent).toContain("Couldn't load now playing.");
+    expect(slot.queryByRole("button", { name: "Open" })).toBeNull();
     expect(backdropCovers(slot.container)).toEqual([]);
     fireEvent.click(slot.getByRole("button", { name: "Retry" }));
     await settle();
@@ -198,14 +210,35 @@ describe("Sonora disclosure", () => {
     expect(slot.getByText("Night Drive")).toBeTruthy();
   });
 
-  it.each(EMPTY_STATE_CASES)("renders the $name state", async ({ make, message }) => {
-    const { slot } = await renderDisclosure(make);
+  it.each(EMPTY_STATE_CASES)(
+    "renders the $name state",
+    async ({ make, message, open }) => {
+      const { slot } = await renderDisclosure(make);
 
-    expect(slot.getByRole("status").textContent).toBe(message);
-    expect(backdropCovers(slot.container)).toEqual([]);
-    // Controls only exist while a track does.
-    expect(slot.queryByRole("button")).toBeNull();
-    expect(slot.queryByRole("slider")).toBeNull();
+      expect(slot.getByText(message)).toBeTruthy();
+      expect(backdropCovers(slot.container)).toEqual([]);
+      // No playback controls without a track; not-running adds the Open action.
+      expect(slot.queryAllByRole("button").map((button) => button.textContent)).toEqual(
+        open ? ["Open"] : [],
+      );
+      expect(slot.queryByRole("slider")).toBeNull();
+    },
+  );
+
+  it("opens Sonora from the not-running line without moving focus", async () => {
+    const prompt = focusedPrompt();
+    const { slot } = await renderDisclosure(() =>
+      emptyNowPlaying("not-running", nextReceivedAt()),
+    );
+    const open = slot.getByRole("button", { name: "Open" });
+
+    expect(fireEvent.mouseDown(open)).toBe(false);
+    fireEvent.click(open);
+
+    expect(slot.navigateCalls).toEqual([BARE_SONORA_CALL]);
+    expect(document.activeElement).toBe(prompt);
+
+    prompt.remove();
   });
 
   it("renders a running track", async () => {
@@ -382,9 +415,7 @@ describe("Sonora disclosure", () => {
 
   it("turns debug mode off from the debug button without moving focus", async () => {
     setDebugMode(true);
-    const prompt = document.createElement("textarea");
-    document.body.append(prompt);
-    prompt.focus();
+    const prompt = focusedPrompt();
     const { slot } = await renderDisclosure(() => playing());
     const button = slot.getByRole("button", { name: "Turn off debug mode" });
 
@@ -442,9 +473,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("does not take focus from the prompt on mousedown", async () => {
-    const prompt = document.createElement("textarea");
-    document.body.append(prompt);
-    prompt.focus();
+    const prompt = focusedPrompt();
     const { slot } = await renderDisclosure(() => playing());
     const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 

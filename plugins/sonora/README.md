@@ -6,7 +6,8 @@ Show what Sonora is playing in BB.
 
 Settings → Plugins → Sonora → **Album art behind threads** draws the current
 track's cover behind threads and the New thread screen. It is off by default.
-The cover starts below the header band and fades out before the reading area.
+The cover starts below the header fade and is strongest in the middle, fading
+out before the composer.
 
 Haze, Aura, and Aura Motion draw on the same panels. Turn them off while this
 setting is on.

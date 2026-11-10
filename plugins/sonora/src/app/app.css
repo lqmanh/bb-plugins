@@ -46,21 +46,28 @@
  */
 .sonora-surface-backdrop {
   --sonora-backdrop-blur: 64px;
-  /* Quadratic ease-in (alpha = 1 - t^2): holds the cover near the top, then fades faster. */
+  /*
+   * Symmetric sine mask: transparent where the header and composer fades end,
+   * strongest halfway between them.
+   */
   --sonora-surface-backdrop-mask: linear-gradient(
     to bottom,
-    #000 0%,
-    rgb(0 0 0 / 96%) 20%,
-    rgb(0 0 0 / 84%) 40%,
-    rgb(0 0 0 / 64%) 60%,
-    rgb(0 0 0 / 36%) 80%,
-    rgb(0 0 0 / 19%) 90%,
+    transparent 0%,
+    rgb(0 0 0 / 31%) 10%,
+    rgb(0 0 0 / 59%) 20%,
+    rgb(0 0 0 / 81%) 30%,
+    rgb(0 0 0 / 95%) 40%,
+    #000 50%,
+    rgb(0 0 0 / 95%) 60%,
+    rgb(0 0 0 / 81%) 70%,
+    rgb(0 0 0 / 59%) 80%,
+    rgb(0 0 0 / 31%) 90%,
     transparent 100%
   );
 
   position: absolute;
   inset-inline: 0;
-  top: var(--bb-app-chrome-row-height, 48px);
+  top: var(--sonora-surface-backdrop-top, var(--bb-app-chrome-row-height, 48px));
   bottom: var(--sonora-surface-backdrop-bottom, 0px);
   z-index: -1;
   pointer-events: none;

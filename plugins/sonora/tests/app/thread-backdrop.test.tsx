@@ -119,8 +119,11 @@ describe("Sonora thread backdrop", () => {
     expect(document.documentElement.hasAttribute(ROOT_ATTRIBUTE)).toBe(false);
   });
 
-  it("ends the backdrop at the composer overflow fade", async () => {
+  it("starts below the header scroll fade and ends at the composer overflow fade", async () => {
     const thread = appendPanel(THREAD_PANEL_ID);
+    const topFade = document.createElement("div");
+    topFade.dataset.detailScrollFade = "above";
+    thread.append(topFade);
     const footer = document.createElement("div");
     footer.dataset.scrollFooter = "";
     const composer = document.createElement("div");
@@ -134,6 +137,9 @@ describe("Sonora thread backdrop", () => {
     vi.spyOn(thread, "getBoundingClientRect").mockReturnValue(
       new DOMRect(0, 100, 1_000, 800),
     );
+    vi.spyOn(topFade, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 148, 1_000, 24),
+    );
     vi.spyOn(fade, "getBoundingClientRect").mockReturnValue(
       new DOMRect(0, 650, 1_000, 24),
     );
@@ -141,9 +147,22 @@ describe("Sonora thread backdrop", () => {
     await renderOverlay(() => playing(), { threadBackdrop: true });
 
     const wrapper = thread.querySelector<HTMLElement>(".sonora-surface-backdrop");
+    expect(wrapper?.style.getPropertyValue("--sonora-surface-backdrop-top")).toBe("72px");
     expect(wrapper?.style.getPropertyValue("--sonora-surface-backdrop-bottom")).toBe(
       "250px",
     );
+  });
+
+  it("starts at the header height without a top fade", async () => {
+    const thread = appendPanel(THREAD_PANEL_ID);
+    vi.spyOn(thread, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 100, 1_000, 800),
+    );
+
+    await renderOverlay(() => playing(), { threadBackdrop: true });
+
+    const wrapper = thread.querySelector<HTMLElement>(".sonora-surface-backdrop");
+    expect(wrapper?.style.getPropertyValue("--sonora-surface-backdrop-top")).toBe("48px");
   });
 
   it("swaps the cover when the track changes", async () => {

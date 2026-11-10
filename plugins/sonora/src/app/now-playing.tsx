@@ -1,5 +1,5 @@
+import { experimental_Icon as Icon, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 
 import { CoverBackdrop } from "./components/cover-backdrop.tsx";
 import { DebugButton } from "./components/debug-button.tsx";
@@ -17,17 +17,50 @@ import { providerBadge } from "./lib/providers.ts";
 import { sonoraOpenUrl } from "./lib/sonora-link.ts";
 
 const STATE_ROW_CLASS_NAME = "px-2.5 py-2 text-2xs text-subtle-foreground";
+const STATUS_ACTION_CLASS_NAME = `shrink-0 cursor-pointer rounded-sm text-sidebar-foreground underline-offset-2 hover:underline ${FOCUS_RING_CLASS_NAME}`;
 const DISCLOSURE_BACKDROP_STYLE = {
   "--sonora-backdrop-wash-color": "var(--sidebar)",
 } as CSSProperties;
 
-function StatusRow({ children }: { children: ReactNode }) {
+function StatusActionButton({
+  children,
+  onClick,
+  keepFocus = false,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  keepFocus?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={STATUS_ACTION_CLASS_NAME}
+      onMouseDown={keepFocus ? (event) => event.preventDefault() : undefined}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StatusRow({
+  children,
+  role = "status",
+  messageClassName,
+  action,
+}: {
+  children: ReactNode;
+  role?: "status" | "alert";
+  messageClassName?: string;
+  action?: ReactNode;
+}) {
   return (
     <div
-      role="status"
-      className={`flex min-w-0 items-center gap-2 ${STATE_ROW_CLASS_NAME}`}
+      role={role}
+      className={`flex min-w-0 items-center gap-1 ${STATE_ROW_CLASS_NAME}`}
     >
-      <span className="min-w-0 flex-1">{children}</span>
+      <span className={`min-w-0 flex-1 ${messageClassName ?? ""}`}>{children}</span>
+      {action}
       <DebugButton />
     </div>
   );
@@ -35,28 +68,20 @@ function StatusRow({ children }: { children: ReactNode }) {
 
 function ErrorRow({ retry }: { retry: () => Promise<void> }) {
   return (
-    <div
+    <StatusRow
       role="alert"
-      className={`flex min-w-0 items-center gap-1.5 ${STATE_ROW_CLASS_NAME}`}
+      messageClassName="text-destructive-text"
+      action={<StatusActionButton onClick={() => void retry()}>Retry</StatusActionButton>}
     >
-      <span className="min-w-0 flex-1 text-destructive-text">
-        Couldn&apos;t load now playing.
-      </span>
-      <button
-        type="button"
-        className={`shrink-0 cursor-pointer rounded-sm text-sidebar-foreground underline-offset-2 hover:underline ${FOCUS_RING_CLASS_NAME}`}
-        onClick={() => void retry()}
-      >
-        Retry
-      </button>
-      <DebugButton />
-    </div>
+      Couldn&apos;t load now playing.
+    </StatusRow>
   );
 }
 
 export function NowPlayingDisclosure() {
   const { data, track, state, error, isLoading, refetch } = useNowPlaying();
   const { control, seek, errorMessage } = usePlaybackControl();
+  const navigate = useBbNavigate();
   const [scrub, setScrub] = useState<number | null>(null);
   const current = usePlaybackPosition(
     state === "playing",
@@ -77,15 +102,28 @@ export function NowPlayingDisclosure() {
   }
 
   if (data.status === "unavailable") {
-    return <StatusRow>Can&apos;t reach Sonora</StatusRow>;
+    return <StatusRow>Couldn&apos;t reach Sonora.</StatusRow>;
   }
 
   if (data.status === "not-running") {
-    return <StatusRow>Sonora is not running</StatusRow>;
+    return (
+      <StatusRow
+        action={
+          <StatusActionButton
+            keepFocus
+            onClick={() => navigate.openUrl(sonoraOpenUrl(null, null))}
+          >
+            Open
+          </StatusActionButton>
+        }
+      >
+        Sonora isn&apos;t running.
+      </StatusRow>
+    );
   }
 
   if (track === null) {
-    return <StatusRow>Nothing playing</StatusRow>;
+    return <StatusRow>Nothing is playing.</StatusRow>;
   }
 
   const artists = track.artists.length > 0 ? track.artists.join(", ") : null;

@@ -53,22 +53,31 @@ function useBackdropPanels(enabled: boolean): HTMLElement[] {
 }
 
 const HEADER_HEIGHT_PX = 48;
-
-/**
- * bb fades the thread content into the composer with a 24px overflow
- * gradient. The backdrop should end at the top of that gradient so the two
- * fades do not overlap. The New thread composer has no overflow fade, so the
- * backdrop runs to the bottom of the panel there.
- */
+const TOP_FADE_SELECTOR = '[data-detail-scroll-fade="above"]';
 const COMPOSER_FADE_SELECTOR = '[data-overflow-fade="above"]';
 
-function composerFades(panel: HTMLElement): HTMLElement[] {
-  return Array.from(panel.querySelectorAll<HTMLElement>(COMPOSER_FADE_SELECTOR));
+interface BackdropInsets {
+  top: number;
+  bottom: number;
+}
+
+function panelFades(panel: HTMLElement, selector: string): HTMLElement[] {
+  return Array.from(panel.querySelectorAll<HTMLElement>(selector));
+}
+
+function topFadeBottom(panel: HTMLElement): number | null {
+  let bottom: number | null = null;
+  for (const fade of panelFades(panel, TOP_FADE_SELECTOR)) {
+    const rect = fade.getBoundingClientRect();
+    if (rect.height === 0) continue;
+    if (bottom === null || rect.bottom > bottom) bottom = rect.bottom;
+  }
+  return bottom;
 }
 
 function composerFadeTop(panel: HTMLElement): number | null {
   let top: number | null = null;
-  for (const fade of composerFades(panel)) {
+  for (const fade of panelFades(panel, COMPOSER_FADE_SELECTOR)) {
     const rect = fade.getBoundingClientRect();
     if (rect.height === 0) continue;
     if (top === null || rect.top > top) top = rect.top;
@@ -76,41 +85,50 @@ function composerFadeTop(panel: HTMLElement): number | null {
   return top;
 }
 
-function backdropBottom(panel: HTMLElement): number {
+function backdropInsets(panel: HTMLElement): BackdropInsets {
   const panelRect = panel.getBoundingClientRect();
+  const fadeBottom = topFadeBottom(panel);
   const fadeTop = composerFadeTop(panel);
-  if (fadeTop === null) return 0;
 
-  const bottom = panelRect.bottom - fadeTop;
-  const maxBottom = Math.max(0, panelRect.height - HEADER_HEIGHT_PX);
-  return Math.min(Math.max(0, bottom), maxBottom);
+  const top =
+    fadeBottom === null
+      ? HEADER_HEIGHT_PX
+      : Math.max(HEADER_HEIGHT_PX, fadeBottom - panelRect.top);
+  const bottom = fadeTop === null ? 0 : panelRect.bottom - fadeTop;
+  const maxBottom = Math.max(0, panelRect.height - top);
+
+  return { top, bottom: Math.min(Math.max(0, bottom), maxBottom) };
 }
 
-function sameBottoms(
-  current: Readonly<Record<string, number>>,
-  next: Readonly<Record<string, number>>,
+function sameInsets(
+  current: Readonly<Record<string, BackdropInsets>>,
+  next: Readonly<Record<string, BackdropInsets>>,
 ): boolean {
   const currentKeys = Object.keys(current);
   const nextKeys = Object.keys(next);
   return (
     currentKeys.length === nextKeys.length &&
-    currentKeys.every((key) => current[key] === next[key])
+    currentKeys.every(
+      (key) =>
+        current[key]?.top === next[key]?.top &&
+        current[key]?.bottom === next[key]?.bottom,
+    )
   );
 }
 
-function useBackdropBottoms(
+function useBackdropInsets(
   panels: readonly HTMLElement[],
   enabled: boolean,
-): Record<string, number> {
-  const [bottoms, setBottoms] = useState<Record<string, number>>({});
+): Record<string, BackdropInsets> {
+  const [insets, setInsets] = useState<Record<string, BackdropInsets>>({});
 
   useLayoutEffect(() => {
     if (!enabled) return;
 
     const update = () => {
-      const next: Record<string, number> = {};
-      for (const panel of panels) next[panel.id] = backdropBottom(panel);
-      setBottoms((current) => (sameBottoms(current, next) ? current : next));
+      const next: Record<string, BackdropInsets> = {};
+      for (const panel of panels) next[panel.id] = backdropInsets(panel);
+      setInsets((current) => (sameInsets(current, next) ? current : next));
     };
 
     update();
@@ -118,7 +136,10 @@ function useBackdropBottoms(
     const observer = new ResizeObserver(update);
     for (const panel of panels) {
       observer.observe(panel);
-      for (const fade of composerFades(panel)) {
+      for (const fade of panelFades(
+        panel,
+        `${TOP_FADE_SELECTOR}, ${COMPOSER_FADE_SELECTOR}`,
+      )) {
         if (fade.parentElement !== null) observer.observe(fade.parentElement);
       }
     }
@@ -126,7 +147,7 @@ function useBackdropBottoms(
     return () => observer.disconnect();
   }, [panels, enabled]);
 
-  return bottoms;
+  return insets;
 }
 
 export function ThreadBackdrop() {
@@ -141,7 +162,7 @@ function ThreadBackdropActive() {
   const { cover, onError: handleCoverError } = useCoverSource(rawCover);
   const enabled = cover !== null;
   const panels = useBackdropPanels(enabled);
-  const bottoms = useBackdropBottoms(panels, enabled);
+  const insets = useBackdropInsets(panels, enabled);
   const show = enabled && panels.length > 0;
 
   useLayoutEffect(() => {
@@ -163,7 +184,8 @@ function ThreadBackdropActive() {
             data-bb-plugin={pluginId}
             style={
               {
-                "--sonora-surface-backdrop-bottom": `${bottoms[panel.id] ?? 0}px`,
+                "--sonora-surface-backdrop-top": `${insets[panel.id]?.top ?? HEADER_HEIGHT_PX}px`,
+                "--sonora-surface-backdrop-bottom": `${insets[panel.id]?.bottom ?? 0}px`,
               } as CSSProperties
             }
           >
