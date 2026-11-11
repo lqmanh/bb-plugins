@@ -67,3 +67,16 @@ export function providerBadge(provider: string | null): ProviderBadgeInfo | null
   if (provider === null || !Object.hasOwn(BADGES, provider)) return null;
   return BADGES[provider] ?? null;
 }
+
+const PROVIDER_CYCLE: readonly (string | null)[] = [
+  ...Object.values(BADGES)
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map((badge) => badge.provider),
+  null,
+];
+
+/** The provider after `current` in the debug cycle, wrapping through no badge. */
+export function nextProvider(current: string | null): string | null {
+  const index = current === null ? -1 : PROVIDER_CYCLE.indexOf(current);
+  return PROVIDER_CYCLE[(index + 1) % PROVIDER_CYCLE.length] ?? null;
+}

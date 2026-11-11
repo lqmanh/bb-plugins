@@ -171,7 +171,8 @@ function expectPlaybackTime(
 }
 
 beforeEach(() => {
-  sessionStorage.clear();
+  setDebugMode(false);
+  localStorage.clear();
   vi.useFakeTimers();
   vi.setSystemTime(CLIENT_START);
 });
@@ -323,6 +324,28 @@ describe("Sonora disclosure", () => {
     );
   });
 
+  it("cycles the debug badge through no badge and back to a real one", async () => {
+    setDebugMode(true);
+    const { slot } = await renderDisclosure(() => playing());
+
+    fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // Tidal
+    fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // YouTube Music
+    fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // no badge
+    expect(slot.getByRole("button", { name: "Open in Sonora" })).toBeTruthy();
+
+    // The cover stays clickable, and no badge wraps to Apple Music.
+    fireEvent.click(cover(slot), { altKey: true, detail: 1 });
+    const button = slot.getByRole("button", { name: "Open in Sonora (Apple Music)" });
+    expect(button.querySelector('[data-sonora-provider-badge="apple"]')).not.toBeNull();
+    expect(button.querySelector("[data-sonora-cover]")?.className).toContain(
+      "sonora-cover-gap-square",
+    );
+
+    fireEvent.click(button);
+
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+  });
+
   it.each(OPEN_SONORA_CASES)("opens Sonora from the $name", async ({ make }) => {
     const { slot } = await renderDisclosure(make);
     const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
@@ -348,7 +371,7 @@ describe("Sonora disclosure", () => {
   );
 
   it.each(OPEN_SONORA_CASES)(
-    "does not open Sonora on an Alt-click on the $name",
+    "does not open or cycle Sonora on an Alt-click on the $name",
     async ({ make }) => {
       const { slot } = await renderDisclosure(make);
       const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
@@ -356,11 +379,12 @@ describe("Sonora disclosure", () => {
       fireEvent.click(button, { altKey: true, detail: 1 });
 
       expect(slot.navigateCalls).toEqual([]);
+      expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
     },
   );
 
   it.each(OPEN_SONORA_CASES)(
-    "toggles debug mode on Alt+double-click on the $name",
+    "toggles debug mode and cycles once on Alt+double-click on the $name",
     async ({ make }) => {
       const { slot } = await renderDisclosure(make);
       const coverElement = cover(slot);
@@ -372,15 +396,20 @@ describe("Sonora disclosure", () => {
       fireEvent.doubleClick(coverElement, { altKey: true });
 
       expect(isDebugMode()).toBe(true);
-      expect(sessionStorage.getItem(DEBUG_STORAGE_KEY)).toBe("1");
-      expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBe("1");
+      expect(sessionStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
       expect(slot.navigateCalls).toEqual([]);
       expect(slot.getByRole("button", { name: "Turn off debug mode" })).toBeTruthy();
+
+      fireEvent.click(coverElement, { altKey: true, detail: 1 });
+      fireEvent.click(coverElement, { altKey: true, detail: 2 });
+      expect(slot.getByRole("button", { name: "Open in Sonora (Tidal)" })).toBeTruthy();
 
       fireEvent.doubleClick(coverElement, { altKey: true });
 
       expect(isDebugMode()).toBe(false);
-      expect(sessionStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+      expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+      expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
       expect(slot.navigateCalls).toEqual([]);
       expect(slot.queryByRole("button", { name: "Turn off debug mode" })).toBeNull();
     },
@@ -423,7 +452,7 @@ describe("Sonora disclosure", () => {
     fireEvent.click(button);
 
     expect(isDebugMode()).toBe(false);
-    expect(sessionStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
     expect(slot.queryByRole("button", { name: "Turn off debug mode" })).toBeNull();
     expect(document.activeElement).toBe(prompt);
 

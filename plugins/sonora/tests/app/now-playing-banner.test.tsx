@@ -13,7 +13,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MarqueeText } from "../../src/app/components/marquee.tsx";
 import app from "../../src/app/index.tsx";
-import { DEBUG_STORAGE_KEY, isDebugMode, setDebugMode } from "../../src/app/lib/debug.ts";
+import {
+  DEBUG_STORAGE_KEY,
+  cycleDebugProvider,
+  isDebugMode,
+  setDebugMode,
+} from "../../src/app/lib/debug.ts";
 import { lavaSources } from "../../src/app/lib/lava.ts";
 import { useRunGrace } from "../../src/app/lib/run-grace.ts";
 import {
@@ -123,7 +128,8 @@ function lavaPalette(slot: RenderedSlot): string[] {
 }
 
 beforeEach(() => {
-  sessionStorage.clear();
+  setDebugMode(false);
+  localStorage.clear();
   vi.useFakeTimers();
   vi.setSystemTime(CLIENT_START);
   installCanvasContext();
@@ -237,13 +243,13 @@ describe("Sonora now-playing banner", () => {
     expect(slot.container.querySelector("[data-sonora-banner]")).toBeNull();
   });
 
-  it("reads debug mode from sessionStorage", async () => {
-    sessionStorage.setItem(DEBUG_STORAGE_KEY, "1");
+  it("reads debug mode from localStorage", async () => {
+    localStorage.setItem(DEBUG_STORAGE_KEY, "1");
 
     const { slot } = await renderBanner(() => playing(), { isRunning: false });
 
     expect(slot.container.querySelector("[data-sonora-banner]")).not.toBeNull();
-    expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
   });
 
   it("treats storage that throws as debug mode off", async () => {
@@ -329,13 +335,15 @@ describe("Sonora now-playing banner", () => {
     expect(isDebugMode()).toBe(false);
   });
 
-  it("does not open Sonora on an Alt-click on the record", async () => {
+  it("does not open or cycle the record on an Alt-click", async () => {
+    act(() => setDebugMode(true));
     const { slot } = await renderBanner(() => playing());
     const record = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
     fireEvent.click(record, { altKey: true, detail: 1 });
 
     expect(slot.navigateCalls).toEqual([]);
+    expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
   });
 
   it("opens the bare Sonora link when the track has none", async () => {
@@ -375,6 +383,20 @@ describe("Sonora now-playing banner", () => {
 
     expect(button.querySelector("[data-sonora-provider-badge]")).toBeNull();
     expect(record.className).not.toContain("sonora-record-gap");
+  });
+
+  it("shows the disclosure's debug badge override on the record", async () => {
+    act(() => setDebugMode(true));
+    const { slot } = await renderBanner(() => playing());
+
+    act(() => cycleDebugProvider("spotify"));
+
+    const button = slot.getByRole("button", { name: "Open in Sonora (Tidal)" });
+    expect(button.querySelector('[data-sonora-provider-badge="tidal"]')).not.toBeNull();
+
+    fireEvent.click(button);
+
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
   });
 
   it("opens Sonora from the record's provider badge", async () => {

@@ -20,7 +20,7 @@ const FRAME_INTERVAL_MS = 1_000 / 30;
 const SPEED_SETTLE_MS = 250;
 const COVER_SAMPLE_SIZE = 32;
 /** Base blob radius as a share of the canvas height. */
-const LAVA_RADIUS = 0.6;
+const LAVA_RADIUS = 0.5;
 /**
  * How far a blob's home spot is moved off its even slot, either side, as a
  * share of the canvas width (across) and height (down from the middle).
@@ -38,7 +38,7 @@ const LAVA_TRAVEL_Y = 1;
  * and how fast it drifts nearer and farther, relative to that speed.
  */
 const LAVA_SPEED = [0.15, 0.3] as const;
-const LAVA_DEPTH_RATE = [0.5, 1] as const;
+const LAVA_DEPTH_RATE = [0.8, 1.2] as const;
 /**
  * A slower wave mixed into each blob's loop so it keeps changing shape.
  * `weight` is its share of the travel; `rateX`/`rateY` its speed relative to
@@ -55,7 +55,7 @@ const LAVA_MAIN_RATE_Y = 1.13;
  * Each blob's speed sways by up to `amount` either side, at `rate` relative to
  * its main wave, so it sometimes lingers and sometimes hurries.
  */
-const LAVA_SPEED_SWAY = { amount: 0.3, rate: 0.39 } as const;
+const LAVA_SPEED_SWAY = { amount: 0.45, rate: 0.79 } as const;
 /**
  * Each blob drifts nearer and farther. Its depth runs from 0 (far) to 1
  * (near) and sets, from far to near: its size, its opacity, how much extra

@@ -14,12 +14,12 @@ import { Record } from "./components/record.tsx";
 import { SeekBar } from "./components/seek-bar.tsx";
 import { SONORA_ICONS } from "./lib/constants.ts";
 import { useCoverSource } from "./lib/cover.ts";
-import { useDebugMode } from "./lib/debug.ts";
+import { useDebugMode, useDebugProvider } from "./lib/debug.ts";
 import { useLavaLamp, useLavaPalette } from "./lib/lava.ts";
 import { useNowPlaying } from "./lib/now-playing.ts";
 import { usePlaybackControl } from "./lib/playback-control.ts";
 import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
-import { providerBadge, type ProviderBadgeInfo } from "./lib/providers.ts";
+import { providerBadge } from "./lib/providers.ts";
 import { useRunGrace } from "./lib/run-grace.ts";
 import { sonoraOpenUrl } from "./lib/sonora-link.ts";
 
@@ -75,6 +75,7 @@ export function NowPlayingBanner() {
   const shouldShow = settingOn && inThread && runShown && track !== null;
   const { mounted, open } = useCollapse(shouldShow);
   const displayTrack = track ?? lastTrack;
+  const provider = data?.provider ?? null;
 
   const rootRef = useRef<HTMLDivElement>(null);
   const [gap, setGap] = useState(DEFAULT_GAP_PX);
@@ -92,9 +93,6 @@ export function NowPlayingBanner() {
   }, [mounted]);
 
   if (!mounted || displayTrack === null) return null;
-
-  const provider = data?.provider ?? null;
-  const badge = providerBadge(provider);
 
   return (
     <div
@@ -115,7 +113,7 @@ export function NowPlayingBanner() {
         track={displayTrack}
         state={state}
         openUrl={sonoraOpenUrl(provider, displayTrack.id)}
-        badge={badge}
+        provider={provider}
         position={data?.position ?? null}
         receivedAt={data?.receivedAt ?? 0}
         visible={shouldShow}
@@ -128,7 +126,7 @@ function BannerContent({
   track,
   state,
   openUrl,
-  badge,
+  provider,
   position,
   receivedAt,
   visible,
@@ -136,11 +134,13 @@ function BannerContent({
   track: NowPlayingTrack;
   state: PlaybackState | null;
   openUrl: string;
-  badge: ProviderBadgeInfo | null;
+  provider: string | null;
   position: number | null;
   receivedAt: number;
   visible: boolean;
 }) {
+  const effectiveProvider = useDebugProvider(provider);
+  const badge = providerBadge(effectiveProvider);
   const { cover, onError: handleCoverError } = useCoverSource(track.cover);
   const { control, seek } = usePlaybackControl();
   const [scrub, setScrub] = useState<number | null>(null);

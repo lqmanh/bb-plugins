@@ -11,12 +11,14 @@ export function OpenSonoraButton({
   badge,
   placement,
   className,
+  onAltClick,
   children,
 }: {
   url: string;
   badge: ProviderBadgeInfo | null;
   placement: BadgePlacement;
   className?: string;
+  onAltClick?: () => void;
   children: ReactNode;
 }) {
   const navigate = useBbNavigate();
@@ -29,9 +31,12 @@ export function OpenSonoraButton({
       className={`relative cursor-pointer ${FOCUS_RING_CLASS_NAME} ${className ?? ""}`}
       onMouseDown={(event) => event.preventDefault()}
       onClick={(event) => {
-        // Alt+click belongs to the debug gesture, and the second click of a
-        // double-click must not open a second tab.
-        if (event.altKey || event.detail > 1) return;
+        // Alt+click belongs to the debug gesture, and only its first click cycles.
+        if (event.altKey) {
+          if (event.detail === 1) onAltClick?.();
+          return;
+        }
+        if (event.detail > 1) return;
         navigate.openUrl(url);
       }}
     >

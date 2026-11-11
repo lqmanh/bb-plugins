@@ -9,7 +9,7 @@ import { PlaybackControls } from "./components/playback-controls.tsx";
 import { SeekBar } from "./components/seek-bar.tsx";
 import { FOCUS_RING_CLASS_NAME, SONORA_ICONS } from "./lib/constants.ts";
 import { useCoverSource } from "./lib/cover.ts";
-import { toggleDebugMode } from "./lib/debug.ts";
+import { cycleDebugProvider, toggleDebugMode, useDebugProvider } from "./lib/debug.ts";
 import { useNowPlaying } from "./lib/now-playing.ts";
 import { usePlaybackControl } from "./lib/playback-control.ts";
 import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
@@ -92,6 +92,7 @@ export function NowPlayingDisclosure() {
   const { cover: coverUrl, onError: handleCoverError } = useCoverSource(
     track?.cover ?? null,
   );
+  const provider = useDebugProvider(data?.provider ?? null);
 
   if (data === undefined && error !== null) {
     return <ErrorRow retry={refetch} />;
@@ -127,7 +128,7 @@ export function NowPlayingDisclosure() {
   }
 
   const artists = track.artists.length > 0 ? track.artists.join(", ") : null;
-  const badge = providerBadge(data.provider);
+  const badge = providerBadge(provider);
   const gapClass = badge === null ? "" : `sonora-cover-gap-${badge.shape}`;
   const openUrl = sonoraOpenUrl(data.provider, track.id);
   const shown = scrub ?? current;
@@ -147,6 +148,7 @@ export function NowPlayingDisclosure() {
             badge={badge}
             placement="disclosure"
             className="size-11 shrink-0 rounded-md"
+            onAltClick={() => cycleDebugProvider(data.provider)}
           >
             <span
               data-sonora-cover=""
