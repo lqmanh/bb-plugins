@@ -137,6 +137,33 @@ describe("SeekBar", () => {
     expect(slider.getAttribute("aria-valuetext")).toBe("0:30");
   });
 
+  it("keeps the label at the release point after a drag", () => {
+    const { slider } = renderSeekBar();
+
+    fireEvent.pointerMove(slider, { clientX: 150 });
+    fireEvent.pointerDown(slider, { button: 0, clientX: 150 });
+    fireEvent.pointerMove(window, { clientX: 250 });
+    expect(slider.querySelector("[data-sonora-seek-label]")?.textContent).toBe("1:15");
+
+    fireEvent.pointerUp(slider, { clientX: 250 });
+
+    expect(slider.querySelector("[data-sonora-seek-label]")?.textContent).toBe("1:15");
+  });
+
+  it("hides the label when a drag is released outside the bar", () => {
+    const { slider } = renderSeekBar();
+
+    fireEvent.pointerMove(slider, { clientX: 150 });
+    fireEvent.pointerDown(slider, { button: 0, clientX: 150 });
+    fireEvent.pointerMove(window, { clientX: 350 });
+    fireEvent.pointerLeave(slider);
+    expect(slider.querySelector("[data-sonora-seek-label]")).not.toBeNull();
+
+    fireEvent.pointerUp(window, { clientX: 350 });
+
+    expect(slider.querySelector("[data-sonora-seek-label]")).toBeNull();
+  });
+
   it("sends nothing when a drag is cancelled", () => {
     const { slider, onSeek } = renderSeekBar();
 

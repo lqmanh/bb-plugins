@@ -61,6 +61,7 @@ export function SeekBar({
 }: SeekBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragSecondsRef = useRef<number | null>(null);
+  const pointerOverRef = useRef(false);
   const keyTimerRef = useRef<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -90,17 +91,24 @@ export function SeekBar({
     event.preventDefault();
     const seconds = secondsAt(event.clientX);
     dragSecondsRef.current = seconds;
+    pointerOverRef.current = true;
     setDragging(true);
     setPreview(seconds);
     onScrub?.(seconds);
   }
 
+  function handlePointerEnter() {
+    pointerOverRef.current = true;
+  }
+
   function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    pointerOverRef.current = true;
     if (dragging) return;
     setHoverRatio(ratioAt(event.clientX));
   }
 
   function handlePointerLeave() {
+    pointerOverRef.current = false;
     if (!dragging) setHoverRatio(null);
   }
 
@@ -145,16 +153,17 @@ export function SeekBar({
       setPreview(seconds);
       onScrub?.(seconds);
     };
-    const endDrag = (commit: boolean) => {
+    const endDrag = (commit: boolean, event: PointerEvent) => {
       const seconds = dragSecondsRef.current;
       dragSecondsRef.current = null;
       setDragging(false);
       setPreview(null);
+      setHoverRatio(pointerOverRef.current ? ratioAt(event.clientX) : null);
       onScrub?.(null);
       if (commit && seconds !== null) onSeek(seconds);
     };
-    const handleUp = () => endDrag(true);
-    const handleCancel = () => endDrag(false);
+    const handleUp = (event: PointerEvent) => endDrag(true, event);
+    const handleCancel = (event: PointerEvent) => endDrag(false, event);
 
     window.addEventListener("pointermove", handleMove);
     window.addEventListener("pointerup", handleUp);
@@ -202,6 +211,7 @@ export function SeekBar({
       } ${className ?? ""}`}
       onMouseDown={(event) => event.preventDefault()}
       onPointerDown={handlePointerDown}
+      onPointerEnter={handlePointerEnter}
       onPointerMove={handlePointerMove}
       onPointerLeave={handlePointerLeave}
       onKeyDown={handleKeyDown}
