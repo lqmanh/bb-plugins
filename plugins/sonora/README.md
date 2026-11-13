@@ -1,6 +1,6 @@
 # Sonora
 
-Show what Sonora is playing in BB.
+Show what [Sonora](https://sonorahq.org) is playing in BB.
 
 ## Thread backdrop
 
@@ -9,13 +9,10 @@ track's cover behind threads and the New thread screen. It is off by default.
 The cover starts below the header fade and is strongest in the middle, fading
 out before the composer.
 
-Haze, Aura, and Aura Motion draw on the same panels. Turn them off while this
-setting is on.
-
 ## Now-playing banner
 
 Settings → Plugins → Sonora → **Show what's playing above the prompt box**
-shows a slim banner above a thread's prompt box while the agent works. It has a
+shows a banner above a thread's prompt box while the agent works. It has a
 spinning record, the track and time, a lava lamp in the cover's colors,
 playback controls, and a seekable progress bar.
 
