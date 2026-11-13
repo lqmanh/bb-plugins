@@ -1,6 +1,10 @@
 import { useRef, type ReactNode } from "react";
 
-import { useEasedAnimation, usePageVisible } from "../lib/motion.ts";
+import {
+  useEasedAnimation,
+  usePageVisible,
+  usePrefersReducedMotion,
+} from "../lib/motion.ts";
 import type { ProviderBadgeShape } from "../lib/providers.ts";
 
 const RECORD_KEYFRAMES: Keyframe[] = [
@@ -35,7 +39,14 @@ export function Record({
   const discRef = useRef<HTMLDivElement>(null);
   const pageVisible = usePageVisible();
 
-  useEasedAnimation(discRef, RECORD_KEYFRAMES, RECORD_OPTIONS, playing && pageVisible);
+  const reducedMotion = usePrefersReducedMotion();
+
+  useEasedAnimation(
+    discRef,
+    RECORD_KEYFRAMES,
+    RECORD_OPTIONS,
+    playing && pageVisible && !reducedMotion,
+  );
 
   const gapClass = badgeGap === undefined ? "" : `sonora-record-gap-${badgeGap}`;
 

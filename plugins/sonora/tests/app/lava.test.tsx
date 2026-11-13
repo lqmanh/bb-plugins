@@ -21,6 +21,7 @@ import {
   type FakeContext,
 } from "../support/canvas.ts";
 import { coverColor, paletteStrings } from "../support/lava.ts";
+import { setPrefersReducedMotion } from "../support/media.ts";
 import { advance } from "../support/render.ts";
 
 const PALETTE = ["rgb(1 2 3)", "rgb(4 5 6)"];
@@ -454,6 +455,16 @@ describe("lava animation loop", () => {
     const unmounted = rafSpy.mock.calls.length;
     await advance(500);
     expect(rafSpy.mock.calls.length).toBe(unmounted);
+  });
+
+  it("holds still while playing when the system asks for reduced motion", async () => {
+    setPrefersReducedMotion(true);
+    const view = render(<LavaLoop visible playing palette={PALETTE} />);
+    await advance(2_500);
+    const settled = rafSpy.mock.calls.length;
+    await advance(500);
+    expect(rafSpy.mock.calls.length).toBe(settled);
+    view.unmount();
   });
 
   it("stops when hidden and resumes when shown", async () => {

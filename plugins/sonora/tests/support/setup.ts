@@ -1,3 +1,7 @@
+import { afterEach } from "vitest";
+
+import { fakeMatchMedia, setPrefersReducedMotion } from "./media.ts";
+
 /**
  * Real bb always provides these; jsdom does not. Stub them once for every test
  * file instead of keeping feature guards in the app.
@@ -32,3 +36,11 @@ function fakeAnimation(): Animation {
 if (typeof Element !== "undefined" && typeof Element.prototype.animate !== "function") {
   Element.prototype.animate = () => fakeAnimation();
 }
+
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = fakeMatchMedia;
+}
+
+afterEach(() => {
+  setPrefersReducedMotion(false);
+});

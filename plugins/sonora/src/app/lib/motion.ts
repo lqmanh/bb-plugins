@@ -30,6 +30,29 @@ export function usePageVisible(): boolean {
   return useSyncExternalStore(subscribePageVisible, getPageVisible, () => true);
 }
 
+export const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+let reducedMotionQuery: MediaQueryList | null = null;
+
+function getReducedMotionQuery(): MediaQueryList {
+  reducedMotionQuery ??= window.matchMedia(REDUCED_MOTION_QUERY);
+  return reducedMotionQuery;
+}
+
+function subscribeReducedMotion(listener: () => void): () => void {
+  const query = getReducedMotionQuery();
+  query.addEventListener("change", listener);
+  return () => query.removeEventListener("change", listener);
+}
+
+export function usePrefersReducedMotion(): boolean {
+  return useSyncExternalStore(
+    subscribeReducedMotion,
+    () => getReducedMotionQuery().matches,
+    () => false,
+  );
+}
+
 /**
  * Play an infinite keyframe animation at full speed while `active`, easing its
  * playback rate to a stop (and back up) so motion settles over about a second

@@ -13,7 +13,7 @@ import {
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { TRACK_FADE_MS } from "./constants.ts";
-import { usePageVisible } from "./motion.ts";
+import { usePageVisible, usePrefersReducedMotion } from "./motion.ts";
 
 /** The lava lamp draws at most this often; it is a background texture. */
 const FRAME_INTERVAL_MS = 1_000 / 30;
@@ -618,8 +618,9 @@ export function drawLavaBlobs(
 }
 
 /**
- * Drift the lava while `playing` and the banner is visible. The loop eases the
- * drift to a stop, then stops scheduling frames entirely; it also stops when
+ * Drift the lava while `playing` and the banner is visible, unless the system
+ * asks for reduced motion (the blobs then rest as when paused). The loop eases
+ * the drift to a stop, then stops scheduling frames entirely; it also stops when
  * the page is hidden and on unmount. The canvas is drawn at CSS-pixel size,
  * capped at about 30 fps.
  */
@@ -640,6 +641,8 @@ export function useLavaLamp(
   });
   const state = stateRef.current;
   const pageVisible = usePageVisible();
+  const reducedMotion = usePrefersReducedMotion();
+  const drifting = playing && !reducedMotion;
   const frameRef = useRef<number | null>(null);
   const lastDrawRef = useRef(0);
 
@@ -722,7 +725,7 @@ export function useLavaLamp(
       lastDrawRef.current = now;
 
       const delta = Math.min(elapsed / 1_000, 0.1);
-      const target = playing ? 1 : 0;
+      const target = drifting ? 1 : 0;
       const ease = 1 - Math.exp(-delta / (SPEED_SETTLE_MS / 1_000));
       state.speed += (target - state.speed) * ease;
       if (target === 0 && state.speed < 0.01) state.speed = 0;
@@ -731,7 +734,7 @@ export function useLavaLamp(
 
       draw();
 
-      if (!playing && state.speed === 0 && state.fade >= 1) return;
+      if (!drifting && state.speed === 0 && state.fade >= 1) return;
       frameRef.current = requestAnimationFrame(frame);
     };
 
@@ -739,5 +742,5 @@ export function useLavaLamp(
     frameRef.current = requestAnimationFrame(frame);
 
     return stop;
-  }, [canvasRef, pageVisible, palette, playing, state, visible]);
+  }, [canvasRef, drifting, pageVisible, palette, state, visible]);
 }
