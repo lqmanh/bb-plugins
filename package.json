@@ -12,10 +12,10 @@
     "test": "bash scripts/run-all.sh test"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.19.2",
     "jsdom": "^29.1.1",
-    "prettier": "3.9.10",
-    "typescript": "^5.7.0",
+    "prettier": "3.10.1",
+    "typescript": "^7.0.2",
     "vitest": "^5.1.0"
   }
 }

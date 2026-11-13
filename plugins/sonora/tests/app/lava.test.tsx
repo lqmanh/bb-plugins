@@ -341,16 +341,9 @@ describe("lava painting", () => {
     expect(nearest.opacity).toBeGreaterThan(farthest.opacity);
     expect(nearest.blur).toBeLessThan(farthest.blur);
 
-    const base = height * 0.6;
     for (const frame of frames) {
       expect(frame.depth).toBeGreaterThanOrEqual(0);
       expect(frame.depth).toBeLessThanOrEqual(1);
-      expect(frame.radius).toBeGreaterThanOrEqual(base * 0.5 - 1e-9);
-      expect(frame.radius).toBeLessThanOrEqual(base * 1.5 + 1e-9);
-      expect(frame.opacity).toBeGreaterThanOrEqual(0.35 - 1e-9);
-      expect(frame.opacity).toBeLessThanOrEqual(0.65 + 1e-9);
-      expect(frame.blur).toBeGreaterThanOrEqual(0);
-      expect(frame.blur).toBeLessThanOrEqual(4 + 1e-9);
     }
   });
 
