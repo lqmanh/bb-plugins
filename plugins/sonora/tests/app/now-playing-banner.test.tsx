@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, renderHook } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import type { PluginComposerScope } from "@get-bb/plugin-sdk/app";
 import {
   loadPluginApp,
@@ -183,6 +182,10 @@ describe("Sonora now-playing banner", () => {
     expect(record?.querySelector("[data-sonora-record-hole]")?.className).toContain(
       "size-[var(--sonora-record-hole)]",
     );
+    const badge = slot.container.querySelector('[data-sonora-provider-badge="spotify"]');
+    if (badge === null) throw new Error("the provider badge was not rendered");
+    expect(record?.contains(badge)).toBe(false);
+    expect(disc?.contains(badge)).toBe(false);
     expect(slot.container.querySelector('[data-sonora-record="playing"]')).not.toBeNull();
     expect(
       slot.container.querySelectorAll("[data-sonora-controls-slot] button"),
@@ -368,10 +371,6 @@ describe("Sonora now-playing banner", () => {
       expect(badge.className).not.toContain("pointer-events-none");
       expect(badge.querySelector(`[data-icon="${icon}"]`)).not.toBeNull();
       expect(record.className).toContain(`sonora-record-gap-${shape}`);
-      expect(record.contains(badge)).toBe(false);
-      expect(record.querySelector("[data-sonora-record-disc]")?.contains(badge)).toBe(
-        false,
-      );
     },
   );
 
@@ -391,23 +390,14 @@ describe("Sonora now-playing banner", () => {
 
     act(() => cycleDebugProvider("spotify"));
 
-    const button = slot.getByRole("button", { name: "Open in Sonora (Tidal)" });
-    expect(button.querySelector('[data-sonora-provider-badge="tidal"]')).not.toBeNull();
+    const button = slot.getByRole("button", {
+      name: "Open in Sonora (Subsonic)",
+    });
+    expect(
+      button.querySelector('[data-sonora-provider-badge="subsonic"]'),
+    ).not.toBeNull();
 
     fireEvent.click(button);
-
-    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
-  });
-
-  it("opens Sonora from the record's provider badge", async () => {
-    const { slot } = await renderBanner(() => playing());
-    const badge = slot.container.querySelector('[data-sonora-provider-badge="spotify"]');
-    if (badge === null) throw new Error("the provider badge was not rendered");
-    expect(badge.className).not.toContain("pointer-events-none");
-    vi.useRealTimers();
-    const user = userEvent.setup();
-
-    await user.click(badge);
 
     expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
   });

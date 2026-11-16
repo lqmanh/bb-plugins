@@ -18,6 +18,7 @@ export interface ProviderBadgeInfo {
 /**
  * Icons and brand colors come from Simple Icons 16.37.0. Its SVGs are
  * monochrome; each color is the `hex` field in its `data/simple-icons.json`.
+ * Subsonic's icon and color come from Sonora's app assets instead.
  */
 const BADGES: Record<string, ProviderBadgeInfo> = {
   spotify: {
@@ -59,6 +60,22 @@ const BADGES: Record<string, ProviderBadgeInfo> = {
     color: "#FF0000",
     shape: "round",
     plate: "none",
+  },
+  jellyfin: {
+    provider: "jellyfin",
+    label: "Jellyfin",
+    icon: SONORA_ICONS.jellyfin,
+    color: "#00A4DC",
+    shape: "round",
+    plate: "surface",
+  },
+  subsonic: {
+    provider: "subsonic",
+    label: "Subsonic",
+    icon: SONORA_ICONS.subsonic,
+    color: "#FFA31A",
+    shape: "round",
+    plate: "surface",
   },
 };
 

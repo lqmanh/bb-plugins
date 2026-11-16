@@ -40,6 +40,7 @@ describe("sonoraTrackLink", () => {
 
   it.each([
     { name: "a local track", provider: "local", id: "track-1" },
+    { name: "a Jellyfin track", provider: "jellyfin", id: "track-1" },
     { name: "a subsonic track", provider: "subsonic", id: "track-1" },
     { name: "an unknown provider", provider: "pandora", id: "track-1" },
     { name: "a missing provider", provider: null, id: "track-1" },

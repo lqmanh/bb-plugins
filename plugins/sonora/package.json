@@ -22,9 +22,11 @@
         "audio-lines": "./icons/audio-lines.svg",
         "bug": "./icons/bug.svg",
         "deezer": "./icons/deezer.svg",
+        "jellyfin": "./icons/jellyfin.svg",
         "skip-back": "./icons/skip-back.svg",
         "skip-forward": "./icons/skip-forward.svg",
         "spotify": "./icons/spotify.svg",
+        "subsonic": "./icons/subsonic.svg",
         "tidal": "./icons/tidal.svg",
         "youtube-music": "./icons/youtubemusic.svg"
       }

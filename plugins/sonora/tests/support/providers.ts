@@ -1,6 +1,6 @@
 import type { ProviderBadgeInfo } from "../../src/app/lib/providers.ts";
 
-/** The expected badge metadata from Simple Icons 16.37.0. */
+/** The expected badge metadata from Simple Icons 16.37.0 and Sonora's app assets. */
 export const PROVIDER_BADGES: readonly ProviderBadgeInfo[] = [
   {
     provider: "spotify",
@@ -42,11 +42,26 @@ export const PROVIDER_BADGES: readonly ProviderBadgeInfo[] = [
     shape: "round",
     plate: "none",
   },
+  {
+    provider: "jellyfin",
+    label: "Jellyfin",
+    icon: "sonora/jellyfin",
+    color: "#00A4DC",
+    shape: "round",
+    plate: "surface",
+  },
+  {
+    provider: "subsonic",
+    label: "Subsonic",
+    icon: "sonora/subsonic",
+    color: "#FFA31A",
+    shape: "round",
+    plate: "surface",
+  },
 ];
 
 export const NO_BADGE_PROVIDERS = [
   { name: "a local track", provider: "local" },
-  { name: "a subsonic track", provider: "subsonic" },
   { name: "an unknown provider", provider: "pandora" },
   { name: "a missing provider", provider: null },
 ] as const;

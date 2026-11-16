@@ -8,9 +8,11 @@ export const SONORA_ICONS = {
   audioLines: "sonora/audio-lines",
   bug: "sonora/bug",
   deezer: "sonora/deezer",
+  jellyfin: "sonora/jellyfin",
   skipBack: "sonora/skip-back",
   skipForward: "sonora/skip-forward",
   spotify: "sonora/spotify",
+  subsonic: "sonora/subsonic",
   tidal: "sonora/tidal",
   youtubeMusic: "sonora/youtube-music",
 } as const;

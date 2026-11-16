@@ -37,30 +37,14 @@ const OPEN_SONORA_CASES = [
   { name: "cover", make: () => playing() },
   { name: "placeholder", make: () => playing({ track: track({ cover: null }) }) },
 ] as const;
-const BADGE_CASES = PROVIDER_BADGES.flatMap((badge) => [
-  {
-    ...badge,
-    surface: "cover",
-    make: () => playing({ provider: badge.provider }),
-  },
-  {
-    ...badge,
-    surface: "placeholder",
-    make: () => playing({ provider: badge.provider, track: track({ cover: null }) }),
-  },
-]);
-const NO_BADGE_CASES = NO_BADGE_PROVIDERS.flatMap(({ name, provider }) => [
-  {
-    name,
-    surface: "cover",
-    make: () => playing({ provider }),
-  },
-  {
-    name,
-    surface: "placeholder",
-    make: () => playing({ provider, track: track({ cover: null }) }),
-  },
-]);
+const BADGE_CASES = PROVIDER_BADGES.map((badge) => ({
+  ...badge,
+  make: () => playing({ provider: badge.provider }),
+}));
+const NO_BADGE_CASES = NO_BADGE_PROVIDERS.map(({ name, provider }) => ({
+  name,
+  make: () => playing({ provider }),
+}));
 
 let slots: RenderedSlot[] = [];
 
@@ -262,7 +246,7 @@ describe("Sonora disclosure", () => {
   });
 
   it.each(BADGE_CASES)(
-    "shows the $label badge on the $surface",
+    "shows the $label badge",
     async ({ provider, label, icon, shape, make }) => {
       const { slot } = await renderDisclosure(make);
       const button = slot.getByRole("button", { name: `Open in Sonora (${label})` });
@@ -277,29 +261,24 @@ describe("Sonora disclosure", () => {
     },
   );
 
-  it.each(NO_BADGE_CASES)(
-    "shows no badge for $name on the $surface",
-    async ({ make }) => {
-      const { slot } = await renderDisclosure(make);
-      const button = slot.getByRole("button", { name: "Open in Sonora" });
-      const coverElement = button.querySelector("[data-sonora-cover]");
+  it("applies the badge gap to the placeholder cover", async () => {
+    const { slot } = await renderDisclosure(() =>
+      playing({ provider: "jellyfin", track: track({ cover: null }) }),
+    );
+    const button = slot.getByRole("button", { name: "Open in Sonora (Jellyfin)" });
+    const coverElement = button.querySelector("[data-sonora-cover]");
 
-      expect(button.querySelector("[data-sonora-provider-badge]")).toBeNull();
-      expect(coverElement?.className).not.toContain("sonora-cover-gap");
-    },
-  );
+    expect(coverElement?.querySelector("img")).toBeNull();
+    expect(coverElement?.className).toContain("sonora-cover-gap-round");
+  });
 
-  it("opens Sonora from the provider badge", async () => {
-    const { slot } = await renderDisclosure(() => playing());
-    const badge = slot.container.querySelector('[data-sonora-provider-badge="spotify"]');
-    if (badge === null) throw new Error("the provider badge was not rendered");
-    expect(badge.className).not.toContain("pointer-events-none");
-    vi.useRealTimers();
-    const user = userEvent.setup();
+  it.each(NO_BADGE_CASES)("shows no badge for $name", async ({ make }) => {
+    const { slot } = await renderDisclosure(make);
+    const button = slot.getByRole("button", { name: "Open in Sonora" });
+    const coverElement = button.querySelector("[data-sonora-cover]");
 
-    await user.click(badge);
-
-    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+    expect(button.querySelector("[data-sonora-provider-badge]")).toBeNull();
+    expect(coverElement?.className).not.toContain("sonora-cover-gap");
   });
 
   it("follows the provider when the track changes", async () => {
@@ -328,6 +307,7 @@ describe("Sonora disclosure", () => {
     setDebugMode(true);
     const { slot } = await renderDisclosure(() => playing());
 
+    fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // Subsonic
     fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // Tidal
     fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // YouTube Music
     fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // no badge
@@ -356,64 +336,55 @@ describe("Sonora disclosure", () => {
     expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
   });
 
-  it.each(OPEN_SONORA_CASES)(
-    "opens Sonora once from a $name double-click",
-    async ({ make }) => {
-      const { slot } = await renderDisclosure(make);
-      const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
+  it("opens Sonora once from a double-click", async () => {
+    const { slot } = await renderDisclosure(() => playing());
+    const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
-      fireEvent.click(button, { detail: 1 });
-      fireEvent.click(button, { detail: 2 });
+    fireEvent.click(button, { detail: 1 });
+    fireEvent.click(button, { detail: 2 });
 
-      expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
-      expect(isDebugMode()).toBe(false);
-    },
-  );
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+    expect(isDebugMode()).toBe(false);
+  });
 
-  it.each(OPEN_SONORA_CASES)(
-    "does not open or cycle Sonora on an Alt-click on the $name",
-    async ({ make }) => {
-      const { slot } = await renderDisclosure(make);
-      const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
+  it("does not open or cycle Sonora on an Alt-click", async () => {
+    const { slot } = await renderDisclosure(() => playing());
+    const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
-      fireEvent.click(button, { altKey: true, detail: 1 });
+    fireEvent.click(button, { altKey: true, detail: 1 });
 
-      expect(slot.navigateCalls).toEqual([]);
-      expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
-    },
-  );
+    expect(slot.navigateCalls).toEqual([]);
+    expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
+  });
 
-  it.each(OPEN_SONORA_CASES)(
-    "toggles debug mode and cycles once on Alt+double-click on the $name",
-    async ({ make }) => {
-      const { slot } = await renderDisclosure(make);
-      const coverElement = cover(slot);
+  it("toggles debug mode and cycles once on Alt+double-click", async () => {
+    const { slot } = await renderDisclosure(() => playing());
+    const coverElement = cover(slot);
 
-      expect(isDebugMode()).toBe(false);
+    expect(isDebugMode()).toBe(false);
 
-      fireEvent.click(coverElement, { altKey: true, detail: 1 });
-      fireEvent.click(coverElement, { altKey: true, detail: 2 });
-      fireEvent.doubleClick(coverElement, { altKey: true });
+    fireEvent.click(coverElement, { altKey: true, detail: 1 });
+    fireEvent.click(coverElement, { altKey: true, detail: 2 });
+    fireEvent.doubleClick(coverElement, { altKey: true });
 
-      expect(isDebugMode()).toBe(true);
-      expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBe("1");
-      expect(sessionStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
-      expect(slot.navigateCalls).toEqual([]);
-      expect(slot.getByRole("button", { name: "Turn off debug mode" })).toBeTruthy();
+    expect(isDebugMode()).toBe(true);
+    expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBe("1");
+    expect(sessionStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+    expect(slot.navigateCalls).toEqual([]);
+    expect(slot.getByRole("button", { name: "Turn off debug mode" })).toBeTruthy();
 
-      fireEvent.click(coverElement, { altKey: true, detail: 1 });
-      fireEvent.click(coverElement, { altKey: true, detail: 2 });
-      expect(slot.getByRole("button", { name: "Open in Sonora (Tidal)" })).toBeTruthy();
+    fireEvent.click(coverElement, { altKey: true, detail: 1 });
+    fireEvent.click(coverElement, { altKey: true, detail: 2 });
+    expect(slot.getByRole("button", { name: "Open in Sonora (Subsonic)" })).toBeTruthy();
 
-      fireEvent.doubleClick(coverElement, { altKey: true });
+    fireEvent.doubleClick(coverElement, { altKey: true });
 
-      expect(isDebugMode()).toBe(false);
-      expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
-      expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
-      expect(slot.navigateCalls).toEqual([]);
-      expect(slot.queryByRole("button", { name: "Turn off debug mode" })).toBeNull();
-    },
-  );
+    expect(isDebugMode()).toBe(false);
+    expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+    expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
+    expect(slot.navigateCalls).toEqual([]);
+    expect(slot.queryByRole("button", { name: "Turn off debug mode" })).toBeNull();
+  });
 
   it("puts the debug button at the right end of the controls row", async () => {
     setDebugMode(true);

@@ -34,7 +34,7 @@ export function ProviderBadge({
   const shape = badge.shape === "round" ? "rounded-full" : placementClasses.square;
   const plate = badge.plate === "surface" ? placementClasses.plate : "";
   const tone = badge.color === null ? placementClasses.tone : "";
-  const iconClassName = badge.plate === "surface" ? "size-[64%]" : "size-full";
+  const iconClassName = badge.plate === "surface" ? "size-2/3" : "size-full";
   const iconStyle: CSSProperties | undefined =
     badge.color === null ? undefined : { color: badge.color };
 
