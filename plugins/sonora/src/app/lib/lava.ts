@@ -10,7 +10,7 @@ import {
   useMode,
   type Oklab,
 } from "culori/fn";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 
 import { TRACK_FADE_MS } from "./constants.ts";
 import { usePageVisible, usePrefersReducedMotion } from "./motion.ts";
@@ -19,20 +19,10 @@ import { usePageVisible, usePrefersReducedMotion } from "./motion.ts";
 const FRAME_INTERVAL_MS = 1_000 / 30;
 const SPEED_SETTLE_MS = 250;
 const COVER_SAMPLE_SIZE = 32;
-/** Base blob radius as a share of the canvas height. */
-const LAVA_RADIUS = 0.5;
-/**
- * How far a blob's home spot is moved off its even slot, either side, as a
- * share of the canvas width (across) and height (down from the middle).
- */
+/** At mid-depth, in px. */
+const LAVA_BLOB = { radius: 24, travelX: 96, travelY: 48 };
+/** How far a home spot strays from its slot center, as a share of the slot. */
 const LAVA_HOME_JITTER = 0.05;
-/**
- * How far a blob wanders from its home spot, as a share of the canvas height,
- * either side. Both directions are measured against the height so the motion
- * looks the same however wide the banner is.
- */
-const LAVA_TRAVEL_X = 2;
-const LAVA_TRAVEL_Y = 1;
 /**
  * Seeded per blob, anywhere in each range: how fast it moves along its path,
  * and how fast it drifts nearer and farther, relative to that speed.
@@ -57,19 +47,15 @@ const LAVA_MAIN_RATE_Y = 1.13;
  */
 const LAVA_SPEED_SWAY = { amount: 0.45, rate: 0.79 } as const;
 /**
- * Each blob drifts nearer and farther. Its depth runs from 0 (far) to 1
- * (near) and sets, from far to near: its size, its opacity, how much extra
- * blur it gets on top of the canvas's own, and how far it travels sideways
- * (parallax). Far blobs are drawn first, so near ones sit on top.
+ * Far to near. One `scale` drives both size and travel, as in a real
+ * perspective view; opacity and blur are atmosphere, so they tune separately.
  */
 const LAVA_DEPTH = {
-  size: [0.5, 1.5],
+  scale: [0.5, 1.5],
   opacity: [0.35, 0.65],
   blur: [4, 0],
-  travel: [0.6, 1.4],
 } as const;
 
-/** The point `t` (0–1) of the way through a range, such as far to near. */
 function lerp([from, to]: readonly [number, number], t: number): number {
   return from + (to - from) * t;
 }
@@ -98,7 +84,6 @@ export const LAVA_DARK_LIGHTNESS = [0.62, 0.82] as const;
 export const LAVA_LIGHT_LIGHTNESS = [0.42, 0.66] as const;
 
 export type LavaTheme = "dark" | "light";
-/** Cover colors are OKLab objects; theme-token fallbacks stay CSS strings. */
 export type LavaColor = string | Oklab;
 
 export interface Rgb {
@@ -116,7 +101,6 @@ const colorDistance = differenceEuclidean("oklab");
 /** OKLab distance below which two cover colors are too close to keep both. */
 const PALETTE_DISTANCE = 0.1;
 
-/** Format a palette color for the canvas or the test dataset. */
 export function formatLavaColor(color: LavaColor): string {
   return typeof color === "string" ? color : formatRgb(color);
 }
@@ -199,7 +183,6 @@ export function extractPalette(data: Uint8ClampedArray): Oklab[] {
   }
 
   const sorted = [...buckets.values()].sort((a, b) => b.weight - a.weight);
-  // Strongest buckets first, skipping any too close to a color already taken.
   const picked: Oklab[] = [];
   for (const bucket of sorted) {
     if (picked.length >= MAX_PALETTE_COLORS) break;
@@ -217,8 +200,8 @@ export function extractPalette(data: Uint8ClampedArray): Oklab[] {
 }
 
 /**
- * Theme colors for the lava when the cover has no usable palette. Returns up
- * to five host tokens, with a companion color if the theme resolves only one.
+ * The lava's colors when the cover has no usable palette, so it still matches
+ * the theme.
  */
 export function themePalette(element: HTMLElement): string[] {
   const style = getComputedStyle(element);
@@ -282,13 +265,59 @@ export async function sampleCoverPalette(url: string): Promise<Oklab[]> {
   return palette;
 }
 
-/** Test seam: cover sampling and theme fallback. */
+/** The current track's sample; `colors` is `null` for the theme fallback, unset while pending. */
+interface SampledPalette {
+  key: string;
+  colors?: Oklab[] | null;
+}
+
+/**
+ * Shared so a cover is decoded once however many surfaces show it. Only the
+ * current track is kept, so the cache never grows over a long session.
+ */
+let currentPalette: SampledPalette | null = null;
+const paletteListeners = new Set<() => void>();
+
+function paletteKey(seed: string, cover: string | null): string {
+  return `${seed}\u0000${cover ?? ""}`;
+}
+
+function subscribePalettes(listener: () => void): () => void {
+  paletteListeners.add(listener);
+  return () => paletteListeners.delete(listener);
+}
+
+/** Test seam: cover sampling, theme fallback, and the shared palette cache. */
 export const lavaSources = {
   sample: sampleCoverPalette,
   theme: themePalette,
+  clearPalettes() {
+    currentPalette = null;
+  },
 };
 
-/** A track's lava colors, with the seed that lays its blobs out. */
+function requestPaletteSample(seed: string, cover: string | null): void {
+  const key = paletteKey(seed, cover);
+  if (currentPalette?.key === key) return;
+
+  const entry: SampledPalette = { key };
+  currentPalette = entry;
+  const settle = (colors: Oklab[] | null) => {
+    if (entry !== currentPalette) return;
+    entry.colors = colors;
+    for (const listener of paletteListeners) listener();
+  };
+
+  if (cover === null) {
+    settle(null);
+    return;
+  }
+  lavaSources.sample(cover).then(
+    (colors) => settle(colors.length === 0 ? null : colors),
+    () => settle(null),
+  );
+}
+
 export interface LavaPalette {
   seed: string;
   colors: readonly LavaColor[];
@@ -302,52 +331,34 @@ const EMPTY_LAVA_PALETTE: LavaPalette = { seed: "", colors: [] };
  * same cover reads on light and dark. When the cover has no usable colors
  * (missing, failed, unreadable), the lava uses the host theme colors instead.
  * Both follow bb's theme live; a cover is never re-sampled for a theme change.
- * The seed changes only together with the colors.
+ * `active` is false off screen, so a hidden surface does no work.
  */
-export function useLavaPalette(
+function useLavaPalette(
   cover: string | null,
   /** Stable per track (its id, or title); seeds each blob's traits. */
   seed: string,
   elementRef: RefObject<HTMLElement | null>,
+  active: boolean,
 ): LavaPalette {
   const [palette, setPalette] = useState<LavaPalette>(EMPTY_LAVA_PALETTE);
-  /** Colors sampled from `cover`, or `null` when the theme fallback is in use. */
-  const [sampled, setSampled] = useState<{
-    cover: string | null;
-    colors: Oklab[] | null;
-  } | null>(null);
-  const ready = sampled !== null && sampled.cover === cover;
+  const key = paletteKey(seed, cover);
+  const sampled = useSyncExternalStore(
+    subscribePalettes,
+    () => (currentPalette?.key === key ? currentPalette.colors : undefined),
+    () => undefined,
+  );
   const theme = experimental_useCodeTheme();
 
   useEffect(() => {
-    let live = true;
-
-    if (cover === null) {
-      setSampled({ cover, colors: null });
-      return () => {
-        live = false;
-      };
-    }
-
-    lavaSources.sample(cover).then(
-      (colors) => {
-        if (live) setSampled({ cover, colors: colors.length === 0 ? null : colors });
-      },
-      () => {
-        if (live) setSampled({ cover, colors: null });
-      },
-    );
-
-    return () => {
-      live = false;
-    };
-  }, [cover]);
+    if (!active) return;
+    requestPaletteSample(seed, cover);
+  }, [active, cover, seed]);
 
   useEffect(() => {
     // Until the new cover's colors are in, the old track's lava stays as it
     // is, so a track change is one cross-fade, not one for the new seed and
     // another for the new colors.
-    if (!ready) return;
+    if (!active || sampled === undefined) return;
     const element = elementRef.current;
     if (element === null) return;
 
@@ -359,8 +370,8 @@ export function useLavaPalette(
       );
     };
 
-    if (sampled.colors !== null) {
-      show(applyLightnessBand(sampled.colors, theme.mode));
+    if (sampled !== null) {
+      show(applyLightnessBand(sampled, theme.mode));
       return;
     }
 
@@ -369,18 +380,80 @@ export function useLavaPalette(
       show(lavaSources.theme(element));
     });
     return () => cancelAnimationFrame(frame);
-  }, [ready, sampled, seed, theme.mode, theme.name, elementRef]);
+  }, [active, sampled, seed, theme.mode, theme.name, elementRef]);
 
   return palette;
+}
+
+/**
+ * Whether a canvas is actually shown. The host may hide a surface without
+ * unmounting it, so this watches the canvas itself rather than trusting mounts.
+ */
+function useLavaCanvasVisible(
+  elementRef: RefObject<HTMLCanvasElement | null>,
+  enabled: boolean,
+): boolean {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const element = elementRef.current;
+    if (!enabled || element === null) {
+      setVisible(false);
+      return;
+    }
+
+    let intersecting = false;
+    let sized = element.clientWidth > 0 && element.clientHeight > 0;
+    const update = () => setVisible(intersecting && sized);
+    const observer = new IntersectionObserver(([entry]) => {
+      intersecting = entry?.isIntersecting === true;
+      update();
+    });
+    const resizer = new ResizeObserver(() => {
+      sized = element.clientWidth > 0 && element.clientHeight > 0;
+      update();
+    });
+    observer.observe(element);
+    resizer.observe(element);
+
+    return () => {
+      observer.disconnect();
+      resizer.disconnect();
+    };
+  }, [elementRef, enabled]);
+
+  return visible;
+}
+
+/** `enabled` is the surface's own switch: the setting, plus the banner's open state. */
+export function useLavaSurface(
+  canvasRef: RefObject<HTMLCanvasElement | null>,
+  {
+    cover,
+    seed,
+    playing,
+    enabled,
+  }: {
+    cover: string | null;
+    seed: string;
+    playing: boolean;
+    enabled: boolean;
+  },
+): void {
+  const active = useLavaCanvasVisible(canvasRef, enabled) && enabled;
+  const palette = useLavaPalette(cover, seed, canvasRef, active);
+
+  useLavaLamp(canvasRef, palette, playing, active);
 }
 
 /** One blob's fixed traits, derived from the track so the layout is stable. */
 export interface LavaBlob {
   color: LavaColor;
-  /** Home spot across the canvas width, 0–1; blobs are spread out evenly. */
-  homeX: number;
-  /** Home spot down the canvas height, 0–1, around the middle. */
-  homeY: number;
+  slot: number;
+  count: number;
+  /** Seeded offsets within the home slot, 0–1. */
+  jitterX: number;
+  jitterY: number;
   speed: number;
   phaseX: number;
   phaseY: number;
@@ -389,7 +462,6 @@ export interface LavaBlob {
   phaseZ: number;
   /** How fast the blob drifts nearer and farther, relative to its speed. */
   depthRate: number;
-  /** Phase of its speed sway. */
   phaseSpeed: number;
 }
 
@@ -413,15 +485,43 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-/** A seeded value in 0–1, as a home-spot offset of up to ±LAVA_HOME_JITTER. */
-function jitter(value: number): number {
-  return (value - 0.5) * 2 * LAVA_HOME_JITTER;
+function slotOffset(value: number, slotSize: number): number {
+  return (value - 0.5) * 2 * LAVA_HOME_JITTER * slotSize;
+}
+
+export interface LavaHomeGrid {
+  columns: number;
+  rows: number;
+}
+
+/** Shaped by the aspect, so a wide banner gets one row and a taller surface fills its height. */
+export function lavaHomeGrid(count: number, width: number, height: number): LavaHomeGrid {
+  if (count <= 0) return { columns: 0, rows: 0 };
+  const aspect = height > 0 ? width / height : 1;
+  const columns = Math.min(count, Math.max(1, Math.round(Math.sqrt(count * aspect))));
+  return { columns, rows: Math.ceil(count / columns) };
+}
+
+export function lavaHomePosition(
+  blob: LavaBlob,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  const { columns, rows } = lavaHomeGrid(blob.count, width, height);
+  const column = blob.slot % columns;
+  const row = Math.floor(blob.slot / columns);
+  const slotWidth = width / columns;
+  const slotHeight = height / rows;
+  return {
+    x: (column + 0.5) * slotWidth + slotOffset(blob.jitterX, slotWidth),
+    y: (row + 0.5) * slotHeight + slotOffset(blob.jitterY, slotHeight),
+  };
 }
 
 /**
- * The order in which blobs claim the evenly spaced home slots. It uses its own
- * stream so the dominant cover color can move off the left without changing
- * any other per-blob trait.
+ * The order in which blobs claim the home slots. It uses its own stream so the
+ * dominant cover color can move off the first slot without changing any other
+ * per-blob trait.
  */
 export function lavaHomeOrder(seed: string, count: number): number[] {
   const order = Array.from({ length: count }, (_, index) => index);
@@ -436,11 +536,8 @@ export function lavaHomeOrder(seed: string, count: number): number[] {
 }
 
 /**
- * Give each palette color a blob with its own speed, path and depth rhythm.
- * Size, opacity and blur come from depth as it moves. The home slot comes from
- * a seeded permutation, so an album's dominant cover color does not always
- * start on the left. All traits come from `seed` (the track), so the same track
- * always gets the same arrangement and remounting never reshuffles it mid-song.
+ * All traits come from `seed` (the track), so the same track always gets the
+ * same arrangement and remounting never reshuffles it.
  */
 export function lavaBlobs(seed: string, palette: readonly LavaColor[]): LavaBlob[] {
   const random = seededRandom(hashSeed(seed));
@@ -449,15 +546,16 @@ export function lavaBlobs(seed: string, palette: readonly LavaColor[]): LavaBlob
     const slot = order[index] ?? index;
     return {
       color,
-      homeX: (slot + 0.5) / palette.length + jitter(random()),
+      slot,
+      count: palette.length,
+      jitterX: random(),
       speed: lerp(LAVA_SPEED, random()),
       phaseX: random() * Math.PI * 2,
       phaseY: random() * Math.PI * 2,
       phaseSlow: random() * Math.PI * 2,
       phaseZ: random() * Math.PI * 2,
       depthRate: lerp(LAVA_DEPTH_RATE, random()),
-      // Drawn last so adding it left the other traits of each track unchanged.
-      homeY: 0.5 + jitter(random()),
+      jitterY: random(),
       phaseSpeed: random() * Math.PI * 2,
     };
   });
@@ -482,7 +580,6 @@ function sameColors(a: readonly LavaColor[], b: readonly LavaColor[]): boolean {
   return a.length === b.length && a.every((color, index) => sameColor(color, b[index]!));
 }
 
-/** One direction's offset, -1–1: the main wave mixed with the slower one. */
 function wave(main: number, slowRate: number, along: number, phaseSlow: number): number {
   const { weight } = LAVA_SLOW_WAVE;
   return (1 - weight) * main + weight * Math.sin(along * slowRate + phaseSlow);
@@ -494,11 +591,7 @@ function blobPosition(
   height: number,
   phase: number,
 ): { x: number; y: number; depth: number } {
-  // Each blob rises, sinks and wanders around its own home spot, and drifts
-  // nearer and farther. A slower second wave in each direction keeps the
-  // paths organic; near blobs travel further sideways (parallax).
-  // How far along its path the blob is: its speed, swaying, integrated over
-  // the drift phase so the motion stays smooth.
+  // The swaying speed is integrated over the phase, so the motion stays smooth.
   const { amount, rate } = LAVA_SPEED_SWAY;
   const steady = phase * blob.speed;
   const along =
@@ -506,11 +599,12 @@ function blobPosition(
     (amount / rate) *
       (Math.cos(steady * rate + blob.phaseSpeed) - Math.cos(blob.phaseSpeed));
   const depth = 0.5 + 0.5 * Math.sin(along * blob.depthRate + blob.phaseZ);
+  const perspective = lerp(LAVA_DEPTH.scale, depth);
+  const home = lavaHomePosition(blob, width, height);
   const x =
-    width * blob.homeX +
-    height *
-      LAVA_TRAVEL_X *
-      lerp(LAVA_DEPTH.travel, depth) *
+    home.x +
+    LAVA_BLOB.travelX *
+      perspective *
       wave(Math.sin(along + blob.phaseX), LAVA_SLOW_WAVE.rateX, along, blob.phaseSlow);
   /** -1 at the top of the blob's travel, +1 at the bottom. */
   const lift = wave(
@@ -519,10 +613,9 @@ function blobPosition(
     along,
     blob.phaseSlow,
   );
-  return { x, y: height * blob.homeY + height * LAVA_TRAVEL_Y * lift, depth };
+  return { x, y: home.y + LAVA_BLOB.travelY * perspective * lift, depth };
 }
 
-/** Where one blob is, how near, how big, and how it stretches as it moves. */
 export interface LavaBlobFrame {
   x: number;
   y: number;
@@ -549,7 +642,7 @@ export function lavaBlobFrame(
   motion = 1,
 ): LavaBlobFrame {
   const { x, y, depth } = blobPosition(blob, width, height, phase);
-  const radius = Math.max(0, height * LAVA_RADIUS * lerp(LAVA_DEPTH.size, depth));
+  const radius = Math.max(0, LAVA_BLOB.radius * lerp(LAVA_DEPTH.scale, depth));
   const look = {
     x,
     y,
@@ -559,25 +652,19 @@ export function lavaBlobFrame(
     blur: lerp(LAVA_DEPTH.blur, depth),
   };
 
-  // Measure the motion over a short look back along the path. A blob that
-  // covers 30% of the height in that span is fully stretched.
+  // Relative to the blob's own radius, so stretch looks the same at any size.
   const lookback = 0.15 * Math.max(0, Math.min(1, motion));
-  if (lookback === 0 || height <= 0) {
+  if (lookback === 0 || height <= 0 || look.radius <= 0) {
     return { ...look, stretch: 0, angle: 0 };
   }
   const before = blobPosition(blob, width, height, phase - lookback);
   const dx = x - before.x;
   const dy = y - before.y;
-  const stretch = LAVA_STRETCH * Math.min(1, Math.hypot(dx, dy) / (height * 0.3));
+  const stretch = LAVA_STRETCH * Math.min(1, Math.hypot(dx, dy) / (look.radius * 0.6));
   return { ...look, stretch, angle: Math.atan2(dy, dx) };
 }
 
-/**
- * Paint the blobs far to near, so near ones sit on top. Each blob's depth sets
- * its size, opacity and extra blur; the canvas adds a shared soft blur on top.
- * Sizes follow the canvas height, so blobs look the same however wide the
- * banner is. `alpha` fades a whole palette in or out on a change.
- */
+/** Far to near, so near blobs sit on top. `alpha` fades a whole palette on a change. */
 export function drawLavaBlobs(
   context: CanvasRenderingContext2D,
   width: number,
@@ -618,11 +705,9 @@ export function drawLavaBlobs(
 }
 
 /**
- * Drift the lava while `playing` and the banner is visible, unless the system
- * asks for reduced motion (the blobs then rest as when paused). The loop eases
- * the drift to a stop, then stops scheduling frames entirely; it also stops when
- * the page is hidden and on unmount. The canvas is drawn at CSS-pixel size,
- * capped at about 30 fps.
+ * Under reduced motion the blobs rest as when paused. Once at rest the loop
+ * stops scheduling frames, so a still lamp costs nothing. CSS-pixel size is
+ * enough because the canvas is blurred anyway.
  */
 export function useLavaLamp(
   canvasRef: RefObject<HTMLCanvasElement | null>,

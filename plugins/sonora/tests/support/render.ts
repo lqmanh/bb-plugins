@@ -23,3 +23,9 @@ export function backdropImages(container: ParentNode): HTMLImageElement[] {
 export function backdropCovers(container: ParentNode): string[] {
   return backdropImages(container).map((image) => image.getAttribute("src") ?? "");
 }
+
+export function cover(container: ParentNode): Element {
+  const element = container.querySelector("[data-sonora-cover]");
+  if (element === null) throw new Error("the cover was not rendered");
+  return element;
+}

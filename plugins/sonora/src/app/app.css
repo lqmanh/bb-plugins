@@ -121,7 +121,7 @@ html[data-sonora-backdrop] #thread-detail-timeline-panel [data-page-scroll-viewp
 }
 
 /*
- * The disclosure cover's 16px badge sits 4px past the corner with a 2px gap.
+ * The disclosure and card covers' 16px badge sits 4px past the corner with a 2px gap.
  * The gap mask is 20px across, shaped like the badge, and centered 4px in
  * from the corner.
  */

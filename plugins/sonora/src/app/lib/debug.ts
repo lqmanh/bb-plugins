@@ -24,7 +24,7 @@ function notify(): void {
 /**
  * The Sonora plugin's debug mode. It covers the plugin's frontend (`src/app/`) only.
  *
- * Turn it on by Alt+double-clicking the disclosure's cover, and off with the
+ * Turn it on by Alt+double-clicking the cover in the disclosure or card, and off with the
  * debug button. It lasts across reloads and windows until turned off; any
  * value in local storage counts as on.
  */

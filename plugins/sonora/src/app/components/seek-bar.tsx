@@ -20,7 +20,8 @@ const HIT_AREA_HEIGHT = 8;
 
 /** The only per-surface colors; the shared rules apply the opacities. */
 const SEEK_TONES = {
-  card: { track: "var(--border)", fill: "var(--card-foreground)" },
+  banner: { track: "var(--border)", fill: "var(--card-foreground)" },
+  card: { track: "var(--border)", fill: "var(--popover-foreground)" },
   sidebar: { track: "var(--sidebar-border)", fill: "var(--sidebar-foreground)" },
 } as const;
 
@@ -54,7 +55,7 @@ export function SeekBar({
   onSeek,
   onScrub,
   className,
-  tone = "card",
+  tone = "banner",
   restHeight = 2,
   activeHeight = 4,
   align = "center",

@@ -3,9 +3,7 @@ import { act, fireEvent, render, renderHook } from "@testing-library/react";
 import type { PluginComposerScope } from "@get-bb/plugin-sdk/app";
 import {
   loadPluginApp,
-  renderSlot,
   type CapturedPluginApp,
-  type PluginRpcTestHandlers,
   type RenderedSlot,
 } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,12 +18,8 @@ import {
 } from "../../src/app/lib/debug.ts";
 import { lavaSources } from "../../src/app/lib/lava.ts";
 import { useRunGrace } from "../../src/app/lib/run-grace.ts";
-import {
-  NOW_PLAYING_RPC_TAG,
-  emptyNowPlaying,
-  nowPlayingRpcContract,
-} from "../../src/shared/now-playing.ts";
-import { installCanvasContext } from "../support/canvas.ts";
+import { NOW_PLAYING_RPC_TAG, emptyNowPlaying } from "../../src/shared/now-playing.ts";
+import { installCanvasContext, stubCanvasSize } from "../support/canvas.ts";
 import { installCodeThemeRuntime, setCodeTheme } from "../support/code-theme.ts";
 import {
   BARE_SONORA_CALL,
@@ -39,6 +33,7 @@ import {
 import { bandedPalette, coverColor, type CoverColor } from "../support/lava.ts";
 import { NO_BADGE_PROVIDERS, PROVIDER_BADGES } from "../support/providers.ts";
 import { advance, backdropCovers, settle } from "../support/render.ts";
+import { renderNowPlayingSlot, unmountSlots } from "../support/slot.ts";
 
 const CLIENT_START = 1_700_000_000_000;
 const BADGE_CASES = PROVIDER_BADGES.map((badge) => ({
@@ -52,8 +47,6 @@ const NO_BADGE_CASES = NO_BADGE_PROVIDERS.map(({ name, provider }) => ({
 
 type ComposerCustomization = CapturedPluginApp["composerCustomizations"][number];
 type BannerRegistration = NonNullable<ComposerCustomization["banners"]>[number];
-
-let slots: RenderedSlot[] = [];
 
 async function renderBanner(
   nowPlaying: RpcHandler,
@@ -70,7 +63,7 @@ async function renderBanner(
 }> {
   const captured = await loadPluginApp(app);
   const customization = captured.composerCustomizations.find(
-    (entry) => entry.id === "now-playing-banner",
+    (entry) => entry.id === "now-playing",
   );
   if (customization === undefined) {
     throw new Error("now-playing banner was not registered");
@@ -80,16 +73,12 @@ async function renderBanner(
     throw new Error("now-playing banner was not registered");
   }
 
-  const rpc: PluginRpcTestHandlers<typeof nowPlayingRpcContract> = {
-    nowPlaying,
-    control: options.control ?? (() => null),
-  };
-  const slot = renderSlot(
+  const slot = await renderNowPlayingSlot(
     banner,
     {},
     {
-      rpc,
-      experimental_rpcContract: nowPlayingRpcContract,
+      nowPlaying,
+      control: options.control,
       settings: options.settings,
       composer: {
         scope: options.scope ?? { kind: "thread", threadId: "thread-1" },
@@ -98,8 +87,6 @@ async function renderBanner(
       pluginId: "sonora",
     },
   );
-  slots.push(slot);
-  await settle();
   await advance(50);
   return { slot, customization, banner };
 }
@@ -131,14 +118,16 @@ beforeEach(() => {
   localStorage.clear();
   vi.useFakeTimers();
   vi.setSystemTime(CLIENT_START);
+  lavaSources.clearPalettes();
   installCanvasContext();
   installCodeThemeRuntime();
   vi.spyOn(lavaSources, "sample").mockResolvedValue([coverColor(10, 20, 30)]);
   vi.spyOn(lavaSources, "theme").mockReturnValue(["rgb(30 40 50)"]);
+  return stubCanvasSize();
 });
 
 afterEach(() => {
-  for (const slot of slots.splice(0)) slot.unmount();
+  unmountSlots();
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
@@ -148,7 +137,7 @@ describe("Sonora now-playing banner", () => {
     const { customization, banner } = await renderBanner(() => playing());
 
     expect(customization).toMatchObject({
-      id: "now-playing-banner",
+      id: "now-playing",
       scopes: ["thread"],
     });
     expect(banner).toMatchObject({ id: "now-playing", chrome: "bare" });
@@ -224,11 +213,21 @@ describe("Sonora now-playing banner", () => {
 
   it("hides when the setting is off", async () => {
     const { slot } = await renderBanner(() => playing(), {
-      settings: { nowPlayingBanner: false },
+      settings: { composerBanner: false },
     });
 
     expect(slot.container.querySelector("[data-sonora-banner]")).toBeNull();
     expect(backdropCovers(slot.container)).toEqual([]);
+  });
+
+  it("renders no lava canvas when the lamp is off", async () => {
+    const { slot } = await renderBanner(() => playing(), {
+      settings: { lavaLamp: false },
+    });
+
+    banner(slot);
+    expect(slot.container.querySelector("canvas")).toBeNull();
+    expect(backdropCovers(slot.container)).toEqual(["https://example.test/cover.jpg"]);
   });
 
   it("hides when the agent is not running, unless debug mode is on", async () => {

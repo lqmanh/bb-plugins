@@ -44,10 +44,22 @@ export default function plugin(bb: BbPluginApi, overrides: SonoraPluginDeps = {}
         "Show the current track's cover behind threads and the New thread screen.",
       default: false,
     },
-    nowPlayingBanner: {
+    composerBanner: {
       type: "boolean",
       label: "Show what's playing above the prompt box",
-      description: "Show the current track above the prompt box while the agent works.",
+      description: "Show the player above the prompt box while the agent works.",
+      default: true,
+    },
+    contextCard: {
+      type: "boolean",
+      label: "Show what's playing in the thread context card",
+      description: "Show the player in the card at a thread's upper right corner.",
+      default: false,
+    },
+    lavaLamp: {
+      type: "boolean",
+      label: "Lava lamp",
+      description: "Animate the track's colors behind the player.",
       default: true,
     },
   });

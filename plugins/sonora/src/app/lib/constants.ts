@@ -19,6 +19,6 @@ export const SONORA_ICONS = {
 
 /**
  * How long a track change cross-fades, everywhere: the cover backdrops (as
- * `--sonora-track-fade`) and the banner's lava.
+ * `--sonora-track-fade`) and the lava.
  */
 export const TRACK_FADE_MS = 2_000;

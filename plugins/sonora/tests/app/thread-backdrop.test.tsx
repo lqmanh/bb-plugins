@@ -1,25 +1,17 @@
 // @vitest-environment jsdom
-import {
-  loadPluginApp,
-  renderSlot,
-  type RenderedSlot,
-} from "@get-bb/plugin-sdk/testing/app";
+import { loadPluginApp, type RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import app from "../../src/app/index.tsx";
-import {
-  NOW_PLAYING_RPC_TAG,
-  emptyNowPlaying,
-  nowPlayingRpcContract,
-} from "../../src/shared/now-playing.ts";
+import { NOW_PLAYING_RPC_TAG, emptyNowPlaying } from "../../src/shared/now-playing.ts";
 import { nextReceivedAt, playing, track, type RpcHandler } from "../support/fixtures.ts";
 import { backdropCovers, settle } from "../support/render.ts";
+import { renderNowPlayingSlot, unmountSlot, unmountSlots } from "../support/slot.ts";
 
 const THREAD_PANEL_ID = "thread-detail-timeline-panel";
 const COMPOSE_PANEL_ID = "root-compose-main-panel";
 const ROOT_ATTRIBUTE = "data-sonora-backdrop";
 
-let slots: RenderedSlot[] = [];
 let panels: HTMLElement[] = [];
 
 function appendPanel(id: string): HTMLElement {
@@ -42,19 +34,11 @@ async function renderOverlay(
     throw new Error("thread backdrop overlay was not registered");
   }
 
-  const slot = renderSlot(
+  return renderNowPlayingSlot(
     registration,
     {},
-    {
-      rpc: { nowPlaying },
-      experimental_rpcContract: nowPlayingRpcContract,
-      settings,
-      pluginId: "sonora",
-    },
+    { nowPlaying, settings, pluginId: "sonora" },
   );
-  slots.push(slot);
-  await settle();
-  return slot;
 }
 
 beforeEach(() => {
@@ -62,7 +46,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const slot of slots.splice(0)) slot.unmount();
+  unmountSlots();
   for (const panel of panels.splice(0)) panel.remove();
   document.documentElement.removeAttribute(ROOT_ATTRIBUTE);
   vi.restoreAllMocks();
@@ -206,8 +190,7 @@ describe("Sonora thread backdrop", () => {
     expect(backdropCovers(thread)).toEqual(["https://example.test/cover.jpg"]);
     expect(backdropCovers(compose)).toEqual(["https://example.test/cover.jpg"]);
 
-    slot.unmount();
-    slots = slots.filter((entry) => entry !== slot);
+    unmountSlot(slot);
     expect(document.querySelector("[data-sonora-backdrop-layer]")).toBeNull();
     expect(document.documentElement.hasAttribute(ROOT_ATTRIBUTE)).toBe(false);
     expect(disconnect).toHaveBeenCalled();

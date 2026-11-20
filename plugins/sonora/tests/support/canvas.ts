@@ -42,3 +42,20 @@ export function installCanvasContext(context: FakeContext = fakeContext()): Fake
   );
   return context;
 }
+
+/** jsdom has no layout; give canvases a size so the lava draws. Returns the restore. */
+export function stubCanvasSize(width = 400, height = 44): () => void {
+  const prototype = HTMLCanvasElement.prototype;
+  Object.defineProperty(prototype, "clientWidth", {
+    configurable: true,
+    get: () => width,
+  });
+  Object.defineProperty(prototype, "clientHeight", {
+    configurable: true,
+    get: () => height,
+  });
+  return () => {
+    Reflect.deleteProperty(prototype, "clientWidth");
+    Reflect.deleteProperty(prototype, "clientHeight");
+  };
+}

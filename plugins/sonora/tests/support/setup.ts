@@ -1,6 +1,7 @@
 import { afterEach } from "vitest";
 
 import { fakeMatchMedia, setPrefersReducedMotion } from "./media.ts";
+import { TestIntersectionObserver } from "./observers.ts";
 
 /**
  * Real bb always provides these; jsdom does not. Stub them once for every test
@@ -14,6 +15,11 @@ class TestResizeObserver implements ResizeObserver {
 
 if (typeof globalThis.ResizeObserver === "undefined") {
   globalThis.ResizeObserver = TestResizeObserver as unknown as typeof ResizeObserver;
+}
+
+if (typeof globalThis.IntersectionObserver === "undefined") {
+  globalThis.IntersectionObserver =
+    TestIntersectionObserver as unknown as typeof IntersectionObserver;
 }
 
 function fakeAnimation(): Animation {
@@ -43,4 +49,5 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
 
 afterEach(() => {
   setPrefersReducedMotion(false);
+  TestIntersectionObserver.intersecting = true;
 });

@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 
 import { type NowPlayingTrack, type PlaybackState } from "../shared/now-playing.ts";
 import { CoverBackdrop } from "./components/cover-backdrop.tsx";
+import { LavaCanvas } from "./components/lava-canvas.tsx";
 import { MarqueeText } from "./components/marquee.tsx";
 import { OpenSonoraButton } from "./components/open-sonora-button.tsx";
 import { PlaybackControls } from "./components/playback-controls.tsx";
@@ -15,7 +16,6 @@ import { SeekBar } from "./components/seek-bar.tsx";
 import { SONORA_ICONS } from "./lib/constants.ts";
 import { useCoverSource } from "./lib/cover.ts";
 import { useDebugMode, useDebugProvider } from "./lib/debug.ts";
-import { useLavaLamp, useLavaPalette } from "./lib/lava.ts";
 import { useNowPlaying } from "./lib/now-playing.ts";
 import { usePlaybackControl } from "./lib/playback-control.ts";
 import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
@@ -61,7 +61,7 @@ function useCollapse(visible: boolean): { mounted: boolean; open: boolean } {
 export function NowPlayingBanner() {
   const { values } = useSettings();
   const composer = useComposer();
-  const settingOn = values?.nowPlayingBanner !== false;
+  const settingOn = values?.composerBanner !== false;
   const inThread = composer.scope.kind === "thread";
   const debug = useDebugMode();
   const runShown = useRunGrace(composer.isRunning) || debug;
@@ -147,10 +147,6 @@ function BannerContent({
   const playing = state === "playing";
   const current = usePlaybackPosition(playing, position, track.duration, receivedAt);
   const shown = scrub ?? current;
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const palette = useLavaPalette(cover, track.id ?? track.title, canvasRef);
-
-  useLavaLamp(canvasRef, palette, playing, visible);
 
   const artists = track.artists.length > 0 ? track.artists.join(", ") : null;
   const meta = [artists, track.album]
@@ -176,10 +172,11 @@ function BannerContent({
       className="relative flex h-[var(--sonora-banner-height)] items-center gap-4 overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-xs"
     >
       {cover === null ? null : <CoverBackdrop cover={cover} onError={handleCoverError} />}
-      <canvas
-        ref={canvasRef}
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 size-full blur-[8px] saturate-150"
+      <LavaCanvas
+        cover={cover}
+        seed={track.id ?? track.title}
+        playing={playing}
+        active={visible}
       />
 
       <div className="relative z-10 flex min-w-0 flex-1 items-center gap-4 ps-3">

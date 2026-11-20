@@ -164,7 +164,7 @@ describe("SeekBar", () => {
     expect(slider.querySelector("[data-sonora-seek-label]")).toBeNull();
   });
 
-  it("sends nothing when a drag is cancelled", () => {
+  it("sends nothing when a drag is canceled", () => {
     const { slider, onSeek } = renderSeekBar();
 
     fireEvent.pointerDown(slider, { button: 0, clientX: 150 });

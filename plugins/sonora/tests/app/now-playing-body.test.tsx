@@ -1,23 +1,16 @@
 // @vitest-environment jsdom
 import { act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  loadPluginApp,
-  renderSlot,
-  type CapturedPluginApp,
-  type PluginRpcTestHandlers,
-  type RenderedSlot,
-} from "@get-bb/plugin-sdk/testing/app";
+import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import app from "../../src/app/index.tsx";
+import { NowPlayingBody } from "../../src/app/components/now-playing-body.tsx";
 import { SONORA_ICONS } from "../../src/app/lib/constants.ts";
 import { DEBUG_STORAGE_KEY, isDebugMode, setDebugMode } from "../../src/app/lib/debug.ts";
 import { PLAYBACK_ERROR_CLEAR_MS } from "../../src/app/lib/playback-control.ts";
 import {
   NOW_PLAYING_RPC_TAG,
   emptyNowPlaying,
-  nowPlayingRpcContract,
   type NowPlaying,
 } from "../../src/shared/now-playing.ts";
 import {
@@ -30,7 +23,14 @@ import {
   type RpcHandler,
 } from "../support/fixtures.ts";
 import { NO_BADGE_PROVIDERS, PROVIDER_BADGES } from "../support/providers.ts";
-import { advance, backdropCovers, backdropImages, settle } from "../support/render.ts";
+import {
+  advance,
+  backdropCovers,
+  backdropImages,
+  cover,
+  settle,
+} from "../support/render.ts";
+import { renderNowPlayingSlot, unmountSlots } from "../support/slot.ts";
 
 const CLIENT_START = 1_700_000_000_000;
 const OPEN_SONORA_CASES = [
@@ -46,56 +46,19 @@ const NO_BADGE_CASES = NO_BADGE_PROVIDERS.map(({ name, provider }) => ({
   make: () => playing({ provider }),
 }));
 
-let slots: RenderedSlot[] = [];
-
-type DisclosureRegistration = Extract<
-  CapturedPluginApp["experimentalSidebarFooterItems"][number],
-  { kind: "disclosure" }
->;
-
-interface RenderedDisclosure {
-  slot: RenderedSlot;
-  registration: DisclosureRegistration;
+function Player() {
+  return <NowPlayingBody surface="sidebar" />;
 }
 
-async function renderDisclosure(
+function renderPlayer(
   nowPlaying: RpcHandler,
-  control: ControlHandler = () => null,
-): Promise<RenderedDisclosure> {
-  const captured = await loadPluginApp(app);
-  const registration = captured.experimentalSidebarFooterItems.find(
-    (item): item is DisclosureRegistration =>
-      item.id === "now-playing" && item.kind === "disclosure",
-  );
-  if (registration === undefined) {
-    throw new Error("now-playing disclosure was not registered");
-  }
-
-  const rpc: PluginRpcTestHandlers<typeof nowPlayingRpcContract> = {
-    nowPlaying,
-    control,
-  };
-  const slot = renderSlot(
-    registration,
-    { dismiss: vi.fn() },
-    {
-      rpc,
-      experimental_rpcContract: nowPlayingRpcContract,
-    },
-  );
-  slots.push(slot);
-  await settle();
-  return { slot, registration };
+  control?: ControlHandler,
+): Promise<RenderedSlot> {
+  return renderNowPlayingSlot({ component: Player }, {}, { nowPlaying, control });
 }
 
 function sonoraGlyph(slot: RenderedSlot): Element | null {
   return slot.container.querySelector(`[data-icon="${SONORA_ICONS.audioLines}"]`);
-}
-
-function cover(slot: RenderedSlot): Element {
-  const element = slot.container.querySelector("[data-sonora-cover]");
-  if (element === null) throw new Error("the cover was not rendered");
-  return element;
 }
 
 function focusedPrompt(): HTMLTextAreaElement {
@@ -162,14 +125,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const slot of slots.splice(0)) slot.unmount();
+  unmountSlots();
   vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
-describe("Sonora disclosure", () => {
+describe("Sonora player", () => {
   it("shows a quiet loading row before the first snapshot arrives", async () => {
-    const { slot } = await renderDisclosure(() => new Promise(() => {}));
+    const slot = await renderPlayer(() => new Promise(() => {}));
 
     expect(slot.getByRole("status").textContent).toBe("Loading now playing…");
     expect(slot.queryByRole("button", { name: "Open" })).toBeNull();
@@ -178,7 +141,7 @@ describe("Sonora disclosure", () => {
 
   it("shows a short error with a retry when the first read fails", async () => {
     let failFirstRead = true;
-    const { slot } = await renderDisclosure(() => {
+    const slot = await renderPlayer(() => {
       if (failFirstRead) {
         failFirstRead = false;
         throw new Error("offline");
@@ -198,7 +161,7 @@ describe("Sonora disclosure", () => {
   it.each(EMPTY_STATE_CASES)(
     "renders the $name state",
     async ({ make, message, open }) => {
-      const { slot } = await renderDisclosure(make);
+      const slot = await renderPlayer(make);
 
       expect(slot.getByText(message)).toBeTruthy();
       expect(backdropCovers(slot.container)).toEqual([]);
@@ -212,7 +175,7 @@ describe("Sonora disclosure", () => {
 
   it("opens Sonora from the not-running line without moving focus", async () => {
     const prompt = focusedPrompt();
-    const { slot } = await renderDisclosure(() =>
+    const slot = await renderPlayer(() =>
       emptyNowPlaying("not-running", nextReceivedAt()),
     );
     const open = slot.getByRole("button", { name: "Open" });
@@ -227,7 +190,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("renders a running track", async () => {
-    const { slot } = await renderDisclosure(() => playing());
+    const slot = await renderPlayer(() => playing());
 
     expect(slot.getByText("Night Drive")).toBeTruthy();
     expect(slot.getByText("A, B")).toBeTruthy();
@@ -248,7 +211,7 @@ describe("Sonora disclosure", () => {
   it.each(BADGE_CASES)(
     "shows the $label badge",
     async ({ provider, label, icon, shape, make }) => {
-      const { slot } = await renderDisclosure(make);
+      const slot = await renderPlayer(make);
       const button = slot.getByRole("button", { name: `Open in Sonora (${label})` });
       const badge = button.querySelector(`[data-sonora-provider-badge="${provider}"]`);
       const coverElement = button.querySelector("[data-sonora-cover]");
@@ -262,7 +225,7 @@ describe("Sonora disclosure", () => {
   );
 
   it("applies the badge gap to the placeholder cover", async () => {
-    const { slot } = await renderDisclosure(() =>
+    const slot = await renderPlayer(() =>
       playing({ provider: "jellyfin", track: track({ cover: null }) }),
     );
     const button = slot.getByRole("button", { name: "Open in Sonora (Jellyfin)" });
@@ -273,7 +236,7 @@ describe("Sonora disclosure", () => {
   });
 
   it.each(NO_BADGE_CASES)("shows no badge for $name", async ({ make }) => {
-    const { slot } = await renderDisclosure(make);
+    const slot = await renderPlayer(make);
     const button = slot.getByRole("button", { name: "Open in Sonora" });
     const coverElement = button.querySelector("[data-sonora-cover]");
 
@@ -283,7 +246,7 @@ describe("Sonora disclosure", () => {
 
   it("follows the provider when the track changes", async () => {
     let snapshot = playing({ provider: "spotify" });
-    const { slot } = await renderDisclosure(() => snapshot);
+    const slot = await renderPlayer(() => snapshot);
     expect(
       slot
         .getByRole("button", { name: "Open in Sonora (Spotify)" })
@@ -303,31 +266,8 @@ describe("Sonora disclosure", () => {
     );
   });
 
-  it("cycles the debug badge through no badge and back to a real one", async () => {
-    setDebugMode(true);
-    const { slot } = await renderDisclosure(() => playing());
-
-    fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // Subsonic
-    fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // Tidal
-    fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // YouTube Music
-    fireEvent.click(cover(slot), { altKey: true, detail: 1 }); // no badge
-    expect(slot.getByRole("button", { name: "Open in Sonora" })).toBeTruthy();
-
-    // The cover stays clickable, and no badge wraps to Apple Music.
-    fireEvent.click(cover(slot), { altKey: true, detail: 1 });
-    const button = slot.getByRole("button", { name: "Open in Sonora (Apple Music)" });
-    expect(button.querySelector('[data-sonora-provider-badge="apple"]')).not.toBeNull();
-    expect(button.querySelector("[data-sonora-cover]")?.className).toContain(
-      "sonora-cover-gap-square",
-    );
-
-    fireEvent.click(button);
-
-    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
-  });
-
   it.each(OPEN_SONORA_CASES)("opens Sonora from the $name", async ({ make }) => {
-    const { slot } = await renderDisclosure(make);
+    const slot = await renderPlayer(make);
     const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
     expect(button.getAttribute("type")).toBe("button");
@@ -337,7 +277,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("opens Sonora once from a double-click", async () => {
-    const { slot } = await renderDisclosure(() => playing());
+    const slot = await renderPlayer(() => playing());
     const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
     fireEvent.click(button, { detail: 1 });
@@ -348,7 +288,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("does not open or cycle Sonora on an Alt-click", async () => {
-    const { slot } = await renderDisclosure(() => playing());
+    const slot = await renderPlayer(() => playing());
     const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
     fireEvent.click(button, { altKey: true, detail: 1 });
@@ -357,38 +297,9 @@ describe("Sonora disclosure", () => {
     expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
   });
 
-  it("toggles debug mode and cycles once on Alt+double-click", async () => {
-    const { slot } = await renderDisclosure(() => playing());
-    const coverElement = cover(slot);
-
-    expect(isDebugMode()).toBe(false);
-
-    fireEvent.click(coverElement, { altKey: true, detail: 1 });
-    fireEvent.click(coverElement, { altKey: true, detail: 2 });
-    fireEvent.doubleClick(coverElement, { altKey: true });
-
-    expect(isDebugMode()).toBe(true);
-    expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBe("1");
-    expect(sessionStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
-    expect(slot.navigateCalls).toEqual([]);
-    expect(slot.getByRole("button", { name: "Turn off debug mode" })).toBeTruthy();
-
-    fireEvent.click(coverElement, { altKey: true, detail: 1 });
-    fireEvent.click(coverElement, { altKey: true, detail: 2 });
-    expect(slot.getByRole("button", { name: "Open in Sonora (Subsonic)" })).toBeTruthy();
-
-    fireEvent.doubleClick(coverElement, { altKey: true });
-
-    expect(isDebugMode()).toBe(false);
-    expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
-    expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
-    expect(slot.navigateCalls).toEqual([]);
-    expect(slot.queryByRole("button", { name: "Turn off debug mode" })).toBeNull();
-  });
-
   it("puts the debug button at the right end of the controls row", async () => {
     setDebugMode(true);
-    const { slot } = await renderDisclosure(() => playing());
+    const slot = await renderPlayer(() => playing());
     const previous = slot.getByRole("button", { name: "Previous track" });
     const controls = previous.parentElement?.parentElement;
     const button = slot.getByRole("button", { name: "Turn off debug mode" });
@@ -405,7 +316,7 @@ describe("Sonora disclosure", () => {
     "puts the debug button at the end of the $name status line",
     async ({ make, role }) => {
       setDebugMode(true);
-      const { slot } = await renderDisclosure(make);
+      const slot = await renderPlayer(make);
       const line = slot.getByRole(role);
       const button = slot.getByRole("button", { name: "Turn off debug mode" });
 
@@ -416,7 +327,7 @@ describe("Sonora disclosure", () => {
   it("turns debug mode off from the debug button without moving focus", async () => {
     setDebugMode(true);
     const prompt = focusedPrompt();
-    const { slot } = await renderDisclosure(() => playing());
+    const slot = await renderPlayer(() => playing());
     const button = slot.getByRole("button", { name: "Turn off debug mode" });
 
     expect(fireEvent.mouseDown(button)).toBe(false);
@@ -438,21 +349,19 @@ describe("Sonora disclosure", () => {
       throw new Error("blocked");
     });
 
-    const { slot } = await renderDisclosure(() => playing());
+    const slot = await renderPlayer(() => playing());
 
     expect(isDebugMode()).toBe(false);
     expect(slot.queryByRole("button", { name: "Turn off debug mode" })).toBeNull();
 
-    fireEvent.doubleClick(cover(slot), { altKey: true });
+    fireEvent.doubleClick(cover(slot.container), { altKey: true });
 
     expect(isDebugMode()).toBe(false);
     expect(slot.queryByRole("button", { name: "Turn off debug mode" })).toBeNull();
   });
 
   it("opens the bare Sonora link when the track has none", async () => {
-    const { slot } = await renderDisclosure(() =>
-      playing({ track: track({ id: null }) }),
-    );
+    const slot = await renderPlayer(() => playing({ track: track({ id: null }) }));
 
     fireEvent.click(slot.getByRole("button", { name: "Open in Sonora (Spotify)" }));
 
@@ -460,7 +369,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("activates the cover with Enter and Space", async () => {
-    const { slot } = await renderDisclosure(() => playing());
+    const slot = await renderPlayer(() => playing());
     const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
     vi.useRealTimers();
     const user = userEvent.setup();
@@ -474,7 +383,7 @@ describe("Sonora disclosure", () => {
 
   it("does not take focus from the prompt on mousedown", async () => {
     const prompt = focusedPrompt();
-    const { slot } = await renderDisclosure(() => playing());
+    const slot = await renderPlayer(() => playing());
     const button = slot.getByRole("button", { name: "Open in Sonora (Spotify)" });
 
     expect(fireEvent.mouseDown(button)).toBe(false);
@@ -499,7 +408,7 @@ describe("Sonora disclosure", () => {
     { state: "unknown" as const, label: "Play", input: { action: "play" } },
   ])("sends $input.action from the $state state", async ({ state, label, input }) => {
     const control = vi.fn<ControlHandler>(() => null);
-    const { slot } = await renderDisclosure(() => playing({ state }), control);
+    const slot = await renderPlayer(() => playing({ state }), control);
 
     fireEvent.click(slot.getByRole("button", { name: label }));
     await settle();
@@ -515,7 +424,7 @@ describe("Sonora disclosure", () => {
           release = () => resolve(null);
         }),
     );
-    const { slot } = await renderDisclosure(() => playing({ position: 42 }), control);
+    const slot = await renderPlayer(() => playing({ position: 42 }), control);
     expectPlaybackTime(slot, "0:42", "3:33");
 
     await advance(1_400);
@@ -535,7 +444,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("keeps the controls while a track loads and offers pause", async () => {
-    const { slot } = await renderDisclosure(() => playing({ state: "loading" }));
+    const slot = await renderPlayer(() => playing({ state: "loading" }));
 
     expect(slot.getByRole("button", { name: "Previous track" })).toBeTruthy();
     expect(slot.getByRole("button", { name: "Pause" })).toBeTruthy();
@@ -552,7 +461,7 @@ describe("Sonora disclosure", () => {
           release = () => resolve(null);
         }),
     );
-    const { slot } = await renderDisclosure(() => current, control);
+    const slot = await renderPlayer(() => current, control);
 
     fireEvent.click(slot.getByRole("button", { name: "Play" }));
     // The optimistic read switches before Sonora confirms it.
@@ -578,7 +487,7 @@ describe("Sonora disclosure", () => {
       if (input.action === "pause" && failPause) throw new Error("offline");
       return null;
     });
-    const { slot } = await renderDisclosure(() => playing(), control);
+    const slot = await renderPlayer(() => playing(), control);
 
     fireEvent.click(slot.getByRole("button", { name: "Pause" }));
     expect(slot.getByRole("button", { name: "Play" })).toBeTruthy();
@@ -596,7 +505,7 @@ describe("Sonora disclosure", () => {
 
   it("clears a failed action after a few seconds", async () => {
     const control = vi.fn<ControlHandler>(() => Promise.reject(new Error("offline")));
-    const { slot } = await renderDisclosure(() => playing(), control);
+    const slot = await renderPlayer(() => playing(), control);
 
     fireEvent.click(slot.getByRole("button", { name: "Pause" }));
     await settle();
@@ -614,7 +523,7 @@ describe("Sonora disclosure", () => {
           rejectSeek = reject;
         }),
     );
-    const { slot } = await renderDisclosure(() => playing({ position: 42 }), control);
+    const slot = await renderPlayer(() => playing({ position: 42 }), control);
     const trackElement = slot.container.querySelector("[data-sonora-seek-track]");
     if (!(trackElement instanceof HTMLElement)) {
       throw new Error("seek track was not rendered");
@@ -639,7 +548,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("interpolates position while playing and clamps it to the duration", async () => {
-    const { slot } = await renderDisclosure(() =>
+    const slot = await renderPlayer(() =>
       playing({ position: 210, track: track({ duration: 213 }) }),
     );
     expectPlaybackTime(slot, "3:30", "3:33");
@@ -654,9 +563,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("freezes the position while paused", async () => {
-    const { slot } = await renderDisclosure(() =>
-      playing({ state: "paused", position: 42 }),
-    );
+    const slot = await renderPlayer(() => playing({ state: "paused", position: 42 }));
     expect(slot.getByRole("button", { name: "Play" })).toBeTruthy();
     expect(slot.queryByText("Paused")).toBeNull();
     expect(backdropCovers(slot.container)).toEqual(["https://example.test/cover.jpg"]);
@@ -668,7 +575,7 @@ describe("Sonora disclosure", () => {
   it("keeps the stored anchor across a remount and ignores clock skew", async () => {
     const snapshot = playing({ position: 42 });
     let calls = 0;
-    const { slot, registration } = await renderDisclosure(() => {
+    const slot = await renderPlayer(() => {
       calls += 1;
       return calls === 1 ? snapshot : new Promise<NowPlaying>(() => {});
     });
@@ -679,7 +586,7 @@ describe("Sonora disclosure", () => {
 
     slot.rerender(null);
     await advance(5_000);
-    slot.rerender(<registration.component dismiss={() => {}} />);
+    slot.rerender(<Player />);
     await settle();
 
     expectPlaybackTime(slot, "0:57", "3:33");
@@ -693,7 +600,7 @@ describe("Sonora disclosure", () => {
     const snapshot = playing({
       track: track({ cover: "https://example.test/cover-a.jpg" }),
     });
-    const { slot } = await renderDisclosure(() => {
+    const slot = await renderPlayer(() => {
       calls += 1;
       if (calls === 1) return snapshot;
       throw new Error("offline");
@@ -709,7 +616,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("hides the seek bar when the duration is zero", async () => {
-    const { slot } = await renderDisclosure(() =>
+    const slot = await renderPlayer(() =>
       playing({ position: 0, track: track({ duration: 0 }) }),
     );
 
@@ -719,9 +626,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("falls back to the Sonora glyph when the cover is missing", async () => {
-    const { slot } = await renderDisclosure(() =>
-      playing({ track: track({ cover: null }) }),
-    );
+    const slot = await renderPlayer(() => playing({ track: track({ cover: null }) }));
 
     expect(slot.queryByRole("img")).toBeNull();
     expect(sonoraGlyph(slot)).not.toBeNull();
@@ -732,7 +637,7 @@ describe("Sonora disclosure", () => {
     let current = playing({
       track: track({ cover: "https://example.test/cover-a.jpg" }),
     });
-    const { slot } = await renderDisclosure(() => current);
+    const slot = await renderPlayer(() => current);
     expect(backdropCovers(slot.container)).toEqual(["https://example.test/cover-a.jpg"]);
 
     current = playing({
@@ -761,7 +666,7 @@ describe("Sonora disclosure", () => {
   });
 
   it("falls back to the Sonora glyph when the cover fails to load", async () => {
-    const { slot } = await renderDisclosure(() => playing());
+    const slot = await renderPlayer(() => playing());
 
     const image = slot.getByRole("img", { name: "Night Drive cover" });
     expect(image.getAttribute("referrerpolicy")).toBe("no-referrer");
@@ -773,5 +678,57 @@ describe("Sonora disclosure", () => {
     expect(slot.queryByRole("img")).toBeNull();
     expect(sonoraGlyph(slot)).not.toBeNull();
     expect(backdropCovers(slot.container)).toEqual([]);
+  });
+
+  it("cycles the debug badge through no badge and back to a real one", async () => {
+    setDebugMode(true);
+    const slot = await renderPlayer(() => playing());
+
+    fireEvent.click(cover(slot.container), { altKey: true, detail: 1 }); // Subsonic
+    fireEvent.click(cover(slot.container), { altKey: true, detail: 1 }); // Tidal
+    fireEvent.click(cover(slot.container), { altKey: true, detail: 1 }); // YouTube Music
+    fireEvent.click(cover(slot.container), { altKey: true, detail: 1 }); // no badge
+    expect(slot.getByRole("button", { name: "Open in Sonora" })).toBeTruthy();
+
+    // The cover stays clickable, and no badge wraps to Apple Music.
+    fireEvent.click(cover(slot.container), { altKey: true, detail: 1 });
+    const button = slot.getByRole("button", { name: "Open in Sonora (Apple Music)" });
+    expect(button.querySelector('[data-sonora-provider-badge="apple"]')).not.toBeNull();
+    expect(button.querySelector("[data-sonora-cover]")?.className).toContain(
+      "sonora-cover-gap-square",
+    );
+
+    fireEvent.click(button);
+
+    expect(slot.navigateCalls).toEqual([OPEN_SONORA_CALL]);
+  });
+
+  it("toggles debug mode and cycles once on Alt+double-click", async () => {
+    const slot = await renderPlayer(() => playing());
+    const coverElement = cover(slot.container);
+
+    expect(isDebugMode()).toBe(false);
+
+    fireEvent.click(coverElement, { altKey: true, detail: 1 });
+    fireEvent.click(coverElement, { altKey: true, detail: 2 });
+    fireEvent.doubleClick(coverElement, { altKey: true });
+
+    expect(isDebugMode()).toBe(true);
+    expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBe("1");
+    expect(sessionStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+    expect(slot.navigateCalls).toEqual([]);
+    expect(slot.getByRole("button", { name: "Turn off debug mode" })).toBeTruthy();
+
+    fireEvent.click(coverElement, { altKey: true, detail: 1 });
+    fireEvent.click(coverElement, { altKey: true, detail: 2 });
+    expect(slot.getByRole("button", { name: "Open in Sonora (Subsonic)" })).toBeTruthy();
+
+    fireEvent.doubleClick(coverElement, { altKey: true });
+
+    expect(isDebugMode()).toBe(false);
+    expect(localStorage.getItem(DEBUG_STORAGE_KEY)).toBeNull();
+    expect(slot.getByRole("button", { name: "Open in Sonora (Spotify)" })).toBeTruthy();
+    expect(slot.navigateCalls).toEqual([]);
+    expect(slot.queryByRole("button", { name: "Turn off debug mode" })).toBeNull();
   });
 });

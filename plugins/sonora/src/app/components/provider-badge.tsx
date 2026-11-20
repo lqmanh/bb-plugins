@@ -3,19 +3,21 @@ import type { CSSProperties } from "react";
 
 import type { BadgePlacement, ProviderBadgeInfo } from "../lib/providers.ts";
 
+/** The disclosure and card covers are the same size, so they share one badge geometry. */
+const COVER_BADGE = {
+  box: "size-4 -right-1 -bottom-1",
+  square: "rounded-[4px]",
+} as const;
+
 const PLACEMENT_CLASSES = {
-  disclosure: {
-    box: "size-4 -right-1 -bottom-1",
-    square: "rounded-[4px]",
-    plate: "bg-sidebar",
-    tone: "text-sidebar-foreground",
-  },
+  sidebar: { ...COVER_BADGE, plate: "bg-sidebar", tone: "text-sidebar-foreground" },
   banner: {
     box: "size-3 -right-[3px] -bottom-[3px]",
     square: "rounded-[3px]",
     plate: "bg-card",
     tone: "text-card-foreground",
   },
+  card: { ...COVER_BADGE, plate: "bg-popover", tone: "text-popover-foreground" },
 } as const;
 
 /**

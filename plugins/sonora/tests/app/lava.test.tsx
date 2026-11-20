@@ -9,19 +9,26 @@ import {
   extractPalette,
   lavaBlobFrame,
   lavaBlobs,
+  lavaHomeGrid,
   lavaHomeOrder,
+  lavaHomePosition,
+  lavaSources,
   sampleCoverPalette,
   themePalette,
   useLavaLamp,
+  useLavaSurface,
   type LavaBlob,
 } from "../../src/app/lib/lava.ts";
 import {
   fakeContext,
   installCanvasContext,
+  stubCanvasSize,
   type FakeContext,
 } from "../support/canvas.ts";
-import { coverColor, paletteStrings } from "../support/lava.ts";
+import { installCodeThemeRuntime } from "../support/code-theme.ts";
+import { coverColor, paletteStrings, type CoverColor } from "../support/lava.ts";
 import { setPrefersReducedMotion } from "../support/media.ts";
+import { TestIntersectionObserver } from "../support/observers.ts";
 import { advance } from "../support/render.ts";
 
 const PALETTE = ["rgb(1 2 3)", "rgb(4 5 6)"];
@@ -38,8 +45,10 @@ function pixelData(
 
 const OriginalImage = globalThis.Image;
 
-function nonHomeTraits(blob: LavaBlob): Omit<LavaBlob, "homeX"> {
-  const { homeX, ...traits } = blob;
+type NonHomeBlob = Omit<LavaBlob, "slot" | "count" | "jitterX" | "jitterY">;
+
+function nonHomeTraits(blob: LavaBlob): NonHomeBlob {
+  const { slot, count, jitterX, jitterY, ...traits } = blob;
   return traits;
 }
 
@@ -264,9 +273,8 @@ describe("lava blobs", () => {
     const blobs = lavaBlobs("track-a", palette);
     const order = lavaHomeOrder("track-a", palette.length);
     blobs.forEach((blob, index) => {
-      expect(
-        Math.abs(blob.homeX - (order[index]! + 0.5) / palette.length),
-      ).toBeLessThanOrEqual(0.05);
+      expect(blob.slot).toBe(order[index]);
+      expect(blob.count).toBe(palette.length);
     });
 
     const short = lavaBlobs("track-a", palette.slice(0, 2));
@@ -348,29 +356,27 @@ describe("lava painting", () => {
     }
   });
 
-  it("sizes blobs from the canvas height, not its width", () => {
+  it("does not grow blobs with a taller canvas", () => {
     const [blob] = lavaBlobs("track-a", PALETTE);
     for (let phase = 0; phase < 50; phase += 2.3) {
-      expect(lavaBlobFrame(blob!, 200, 44, phase).radius).toBeCloseTo(
-        lavaBlobFrame(blob!, 1200, 44, phase).radius,
+      expect(lavaBlobFrame(blob!, 200, 480, phase).radius).toBeCloseTo(
+        lavaBlobFrame(blob!, 200, 48, phase).radius,
       );
     }
   });
 
-  it("moves near blobs further sideways than far ones (parallax)", () => {
+  it("scales travel with depth in both directions", () => {
     const width = 680;
-    const height = 44;
+    const height = 48;
     const blobs = lavaBlobs("track-a", ["#111", "#222", "#333", "#444"]);
 
     for (let phase = 0; phase < 300; phase += 3.7) {
       for (const blob of blobs) {
         const frame = lavaBlobFrame(blob, width, height, phase);
-        // Sideways reach scales from 0.6× (far) to 1.4× (near) of ±200%.
-        const reach = height * 2 * (0.6 + 0.8 * frame.depth);
-        expect(Math.abs(frame.x - width * blob.homeX)).toBeLessThanOrEqual(reach + 1e-9);
-        expect(Math.abs(frame.y - height * blob.homeY)).toBeLessThanOrEqual(
-          height + 1e-9,
-        );
+        const home = lavaHomePosition(blob, width, height);
+        const perspective = 0.5 + frame.depth;
+        expect(Math.abs(frame.x - home.x)).toBeLessThanOrEqual(96 * perspective + 1e-9);
+        expect(Math.abs(frame.y - home.y)).toBeLessThanOrEqual(48 * perspective + 1e-9);
       }
     }
   });
@@ -381,23 +387,28 @@ describe("lava painting", () => {
     for (let phase = 0; phase < 100; phase += 1.7) {
       const moving = lavaBlobFrame(blob!, 680, 44, phase, 1);
       expect(moving.stretch).toBeGreaterThanOrEqual(0);
-      expect(moving.stretch).toBeLessThanOrEqual(0.35);
+      expect(moving.stretch).toBeLessThanOrEqual(0.5);
       if (moving.stretch > 0) stretched += 1;
       expect(lavaBlobFrame(blob!, 680, 44, phase, 0).stretch).toBe(0);
     }
     expect(stretched).toBeGreaterThan(0);
   });
 
-  it("spreads blob home spots evenly across the width, around the middle", () => {
-    const blobs = lavaBlobs("track-a", ["#1", "#2", "#3", "#4"]);
-    const order = lavaHomeOrder("track-a", blobs.length);
-    blobs.forEach((blob, index) => {
-      expect(
-        Math.abs(blob.homeX - (order[index]! + 0.5) / blobs.length),
-      ).toBeLessThanOrEqual(0.05);
-      expect(Math.abs(blob.homeY - 0.5)).toBeLessThanOrEqual(0.05);
+  it("lays a wide banner in one row and a disclosure across rows", () => {
+    const blobs = lavaBlobs("track-a", ["#1", "#2", "#3", "#4", "#5"]);
+
+    expect(lavaHomeGrid(blobs.length, 680, 48)).toEqual({
+      columns: 5,
+      rows: 1,
     });
-    expect(new Set(blobs.map((blob) => blob.homeY)).size).toBeGreaterThan(1);
+    for (const blob of blobs) {
+      const home = lavaHomePosition(blob, 680, 48);
+      expect(Math.abs(home.y - 24)).toBeLessThanOrEqual(48 * 0.05 + 1e-9);
+    }
+
+    expect(lavaHomeGrid(blobs.length, 240, 160).rows).toBeGreaterThan(1);
+    const homes = blobs.map((blob) => lavaHomePosition(blob, 240, 160));
+    expect(new Set(homes.map((home) => home.y)).size).toBeGreaterThan(1);
   });
 });
 
@@ -507,6 +518,121 @@ describe("lava animation loop", () => {
     });
     await advance(100);
     expect(rafSpy.mock.calls.length).toBeGreaterThan(hidden);
+
+    view.unmount();
+  });
+});
+
+function LavaSurfaceCanvas({ cover, seed }: { cover: string | null; seed: string }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useLavaSurface(ref, { cover, seed, playing: true, enabled: true });
+  return <canvas ref={ref} />;
+}
+
+function TwoLavaSurfaces({ cover, seed }: { cover: string; seed: string }) {
+  return (
+    <>
+      <LavaSurfaceCanvas cover={cover} seed={seed} />
+      <LavaSurfaceCanvas cover={cover} seed={seed} />
+    </>
+  );
+}
+
+describe("lava surface visibility", () => {
+  let rafSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    lavaSources.clearPalettes();
+    installCodeThemeRuntime();
+    installCanvasContext();
+    rafSpy = vi.spyOn(window, "requestAnimationFrame");
+    return stubCanvasSize();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("does no palette work or frames until the canvas is on screen", async () => {
+    vi.spyOn(lavaSources, "sample").mockResolvedValue([coverColor(10, 20, 30)]);
+    TestIntersectionObserver.intersecting = false;
+    const view = render(
+      <LavaSurfaceCanvas cover="https://example.test/cover.jpg" seed="track-a" />,
+    );
+    await advance(100);
+
+    expect(lavaSources.sample).not.toHaveBeenCalled();
+    const idle = rafSpy.mock.calls.length;
+    await advance(500);
+    expect(rafSpy.mock.calls.length).toBe(idle);
+
+    act(() => TestIntersectionObserver.setIntersecting(true));
+    await advance(100);
+
+    expect(lavaSources.sample).toHaveBeenCalledTimes(1);
+    expect(rafSpy.mock.calls.length).toBeGreaterThan(idle);
+    view.unmount();
+  });
+
+  it("shares the palette for a track and keeps only the current track", async () => {
+    const resolvers: Array<(colors: CoverColor[]) => void> = [];
+    vi.spyOn(lavaSources, "sample").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const view = render(
+      <TwoLavaSurfaces cover="https://example.test/cover-a.jpg" seed="track-a" />,
+    );
+    await advance(0);
+
+    expect(lavaSources.sample).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolvers[0]!([coverColor(10, 20, 30)]);
+    });
+    await advance(0);
+
+    let canvases = Array.from(view.container.querySelectorAll("canvas"));
+    expect(canvases).toHaveLength(2);
+    const trackAPalette = canvases[0]?.dataset.sonoraLavaPalette;
+    expect(trackAPalette).not.toBeUndefined();
+    expect(canvases[1]?.dataset.sonoraLavaPalette).toBe(trackAPalette);
+
+    // A new track keeps the old palette until its own sample lands.
+    view.rerender(
+      <TwoLavaSurfaces cover="https://example.test/cover-b.jpg" seed="track-b" />,
+    );
+    await advance(0);
+    canvases = Array.from(view.container.querySelectorAll("canvas"));
+    expect(canvases[0]?.dataset.sonoraLavaPalette).toBe(trackAPalette);
+
+    // Moving on drops B's pending sample; its late result is ignored.
+    view.rerender(
+      <TwoLavaSurfaces cover="https://example.test/cover-c.jpg" seed="track-c" />,
+    );
+    await advance(0);
+    await act(async () => {
+      resolvers[1]!([coverColor(40, 50, 60)]);
+    });
+    await advance(0);
+    canvases = Array.from(view.container.querySelectorAll("canvas"));
+    expect(canvases[0]?.dataset.sonoraLavaPalette).toBe(trackAPalette);
+
+    await act(async () => {
+      resolvers[2]!([coverColor(1, 2, 3)]);
+    });
+    await advance(0);
+    canvases = Array.from(view.container.querySelectorAll("canvas"));
+    expect(lavaSources.sample).toHaveBeenCalledTimes(3);
+    expect(canvases[0]?.dataset.sonoraLavaSeed).toBe("track-c");
+    expect(canvases[0]?.dataset.sonoraLavaPalette).not.toBe(trackAPalette);
+    expect(canvases[1]?.dataset.sonoraLavaPalette).toBe(
+      canvases[0]?.dataset.sonoraLavaPalette,
+    );
 
     view.unmount();
   });

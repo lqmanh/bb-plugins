@@ -62,25 +62,18 @@ function invalidations(
 }
 
 describe("Sonora plugin", () => {
-  it("declares the thread backdrop and now-playing banner settings", async () => {
+  it("declares the settings with their defaults", async () => {
     const host = createFakePluginHost({ pluginId: "sonora" });
     hosts.push(host);
 
     await plugin(host.bb);
 
-    expect(
-      host.harness.inspection.registrations.settingsDescriptors.threadBackdrop,
-    ).toMatchObject({
-      type: "boolean",
-      label: "Album art behind threads",
-      default: false,
-    });
-    expect(
-      host.harness.inspection.registrations.settingsDescriptors.nowPlayingBanner,
-    ).toMatchObject({
-      type: "boolean",
-      label: "Show what's playing above the prompt box",
-      default: true,
+    const descriptors = host.harness.inspection.registrations.settingsDescriptors;
+    expect(descriptors).toMatchObject({
+      threadBackdrop: { type: "boolean", default: false },
+      composerBanner: { type: "boolean", default: true },
+      contextCard: { type: "boolean", default: false },
+      lavaLamp: { type: "boolean", default: true },
     });
   });
 

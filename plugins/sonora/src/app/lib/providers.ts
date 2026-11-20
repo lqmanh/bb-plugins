@@ -1,7 +1,7 @@
 import { SONORA_ICONS } from "./constants.ts";
 
 export type ProviderBadgeShape = "round" | "square";
-export type BadgePlacement = "disclosure" | "banner";
+export type BadgePlacement = "sidebar" | "banner" | "card";
 
 export interface ProviderBadgeInfo {
   provider: string;

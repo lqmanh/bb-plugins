@@ -1,32 +1,51 @@
 import { experimental_Icon as Icon, useBbNavigate } from "@get-bb/plugin-sdk/app";
 import { useState, type CSSProperties, type ReactNode } from "react";
 
-import { CoverBackdrop } from "./components/cover-backdrop.tsx";
-import { DebugButton } from "./components/debug-button.tsx";
-import { MarqueeText } from "./components/marquee.tsx";
-import { OpenSonoraButton } from "./components/open-sonora-button.tsx";
-import { PlaybackControls } from "./components/playback-controls.tsx";
-import { SeekBar } from "./components/seek-bar.tsx";
-import { FOCUS_RING_CLASS_NAME, SONORA_ICONS } from "./lib/constants.ts";
-import { useCoverSource } from "./lib/cover.ts";
-import { cycleDebugProvider, toggleDebugMode, useDebugProvider } from "./lib/debug.ts";
-import { useNowPlaying } from "./lib/now-playing.ts";
-import { usePlaybackControl } from "./lib/playback-control.ts";
-import { formatTime, usePlaybackPosition } from "./lib/playback.ts";
-import { providerBadge } from "./lib/providers.ts";
-import { sonoraOpenUrl } from "./lib/sonora-link.ts";
+import { FOCUS_RING_CLASS_NAME, SONORA_ICONS } from "../lib/constants.ts";
+import { useCoverSource } from "../lib/cover.ts";
+import { cycleDebugProvider, toggleDebugMode, useDebugProvider } from "../lib/debug.ts";
+import { useNowPlaying } from "../lib/now-playing.ts";
+import { usePlaybackControl } from "../lib/playback-control.ts";
+import { formatTime, usePlaybackPosition } from "../lib/playback.ts";
+import { providerBadge } from "../lib/providers.ts";
+import { sonoraOpenUrl } from "../lib/sonora-link.ts";
+import { CoverBackdrop } from "./cover-backdrop.tsx";
+import { DebugButton } from "./debug-button.tsx";
+import { LavaCanvas } from "./lava-canvas.tsx";
+import { MarqueeText } from "./marquee.tsx";
+import { OpenSonoraButton } from "./open-sonora-button.tsx";
+import { PlaybackControls } from "./playback-controls.tsx";
+import { SeekBar } from "./seek-bar.tsx";
 
-const STATE_ROW_CLASS_NAME = "px-2.5 py-2 text-2xs text-subtle-foreground";
-const STATUS_ACTION_CLASS_NAME = `shrink-0 cursor-pointer rounded-sm text-sidebar-foreground underline-offset-2 hover:underline ${FOCUS_RING_CLASS_NAME}`;
-const DISCLOSURE_BACKDROP_STYLE = {
-  "--sonora-backdrop-wash-color": "var(--sidebar)",
-} as CSSProperties;
+export type PlayerSurface = "sidebar" | "card";
+
+const SURFACES = {
+  sidebar: {
+    text: "text-sidebar-foreground",
+    placeholder: "bg-sidebar-accent text-subtle-foreground",
+    coverBorder: "border-sidebar-border",
+    backdrop: { "--sonora-backdrop-wash-color": "var(--sidebar)" } as CSSProperties,
+    corners: "",
+  },
+  card: {
+    text: "text-popover-foreground",
+    placeholder: "bg-accent text-subtle-foreground",
+    coverBorder: "border-border",
+    backdrop: { "--sonora-backdrop-wash-color": "var(--popover)" } as CSSProperties,
+    corners: "rounded-md",
+  },
+} as const;
+
+const STATE_ROW_CLASS_NAME = "p-2 text-2xs text-subtle-foreground";
+const STATUS_ACTION_CLASS_NAME = `shrink-0 cursor-pointer rounded-sm underline-offset-2 hover:underline ${FOCUS_RING_CLASS_NAME}`;
 
 function StatusActionButton({
+  surface,
   children,
   onClick,
   keepFocus = false,
 }: {
+  surface: PlayerSurface;
   children: ReactNode;
   onClick: () => void;
   keepFocus?: boolean;
@@ -34,7 +53,7 @@ function StatusActionButton({
   return (
     <button
       type="button"
-      className={STATUS_ACTION_CLASS_NAME}
+      className={`${STATUS_ACTION_CLASS_NAME} ${SURFACES[surface].text}`}
       onMouseDown={keepFocus ? (event) => event.preventDefault() : undefined}
       onClick={onClick}
     >
@@ -66,19 +85,30 @@ function StatusRow({
   );
 }
 
-function ErrorRow({ retry }: { retry: () => Promise<void> }) {
+function ErrorRow({
+  retry,
+  surface,
+}: {
+  retry: () => Promise<void>;
+  surface: PlayerSurface;
+}) {
   return (
     <StatusRow
       role="alert"
       messageClassName="text-destructive-text"
-      action={<StatusActionButton onClick={() => void retry()}>Retry</StatusActionButton>}
+      action={
+        <StatusActionButton surface={surface} onClick={() => void retry()}>
+          Retry
+        </StatusActionButton>
+      }
     >
       Couldn&apos;t load now playing.
     </StatusRow>
   );
 }
 
-export function NowPlayingDisclosure() {
+/** Shared by the disclosure and the card, so the two stay identical apart from surface colors. */
+export function NowPlayingBody({ surface }: { surface: PlayerSurface }) {
   const { data, track, state, error, isLoading, refetch } = useNowPlaying();
   const { control, seek, errorMessage } = usePlaybackControl();
   const navigate = useBbNavigate();
@@ -95,7 +125,7 @@ export function NowPlayingDisclosure() {
   const provider = useDebugProvider(data?.provider ?? null);
 
   if (data === undefined && error !== null) {
-    return <ErrorRow retry={refetch} />;
+    return <ErrorRow retry={refetch} surface={surface} />;
   }
 
   if (data === undefined) {
@@ -111,6 +141,7 @@ export function NowPlayingDisclosure() {
       <StatusRow
         action={
           <StatusActionButton
+            surface={surface}
             keepFocus
             onClick={() => navigate.openUrl(sonoraOpenUrl(null, null))}
           >
@@ -127,6 +158,7 @@ export function NowPlayingDisclosure() {
     return <StatusRow>Nothing is playing.</StatusRow>;
   }
 
+  const styles = SURFACES[surface];
   const artists = track.artists.length > 0 ? track.artists.join(", ") : null;
   const badge = providerBadge(provider);
   const gapClass = badge === null ? "" : `sonora-cover-gap-${badge.shape}`;
@@ -135,25 +167,30 @@ export function NowPlayingDisclosure() {
 
   return (
     <div
-      className="relative overflow-hidden p-2.5 text-sidebar-foreground"
-      style={DISCLOSURE_BACKDROP_STYLE}
+      className={`relative overflow-hidden p-2 ${styles.corners} ${styles.text}`}
+      style={styles.backdrop}
     >
       {coverUrl === null ? null : (
         <CoverBackdrop cover={coverUrl} onError={handleCoverError} />
       )}
+      <LavaCanvas
+        cover={coverUrl}
+        seed={track.id ?? track.title}
+        playing={state === "playing"}
+      />
       <div className="relative flex flex-col gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <OpenSonoraButton
             url={openUrl}
             badge={badge}
-            placement="disclosure"
+            placement={surface}
             className="size-11 shrink-0 rounded-md"
             onAltClick={() => cycleDebugProvider(data.provider)}
           >
             <span
               data-sonora-cover=""
               className={`flex size-full items-center justify-center overflow-hidden rounded-md ${
-                coverUrl === null ? "bg-sidebar-accent text-subtle-foreground" : ""
+                coverUrl === null ? styles.placeholder : ""
               } ${gapClass}`}
               onDoubleClick={(event) => {
                 if (event.altKey) toggleDebugMode();
@@ -170,7 +207,7 @@ export function NowPlayingDisclosure() {
                   src={coverUrl}
                   alt={`${track.title} cover`}
                   referrerPolicy="no-referrer"
-                  className="size-full border border-sidebar-border object-cover"
+                  className={`size-full border object-cover ${styles.coverBorder}`}
                   onError={handleCoverError}
                 />
               )}
@@ -197,7 +234,7 @@ export function NowPlayingDisclosure() {
             onSeek={seek}
             onScrub={setScrub}
             className="min-w-0 flex-1"
-            tone="sidebar"
+            tone={surface}
             restHeight={4}
             activeHeight={6}
           />
