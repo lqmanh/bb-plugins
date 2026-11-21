@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, render } from "@testing-library/react";
 import { useRef } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import {
   applyLightnessBand,
@@ -18,6 +18,7 @@ import {
   useLavaLamp,
   useLavaSurface,
   type LavaBlob,
+  type LavaTheme,
 } from "../../src/app/lib/lava.ts";
 import {
   fakeContext,
@@ -285,55 +286,22 @@ describe("lava blobs", () => {
 });
 
 describe("lava painting", () => {
-  it("paints one blob per palette color, far to near", () => {
+  it("paints one blob per palette color, faded as a whole by alpha", () => {
     const context = fakeContext();
-    const drawn: { color: unknown; alpha: number; filter: string }[] = [];
+    const drawn: { color: unknown; alpha: number }[] = [];
     context.fill.mockImplementation(() =>
-      drawn.push({
-        color: context.fillStyle,
-        alpha: context.globalAlpha,
-        filter: context.filter,
-      }),
+      drawn.push({ color: context.fillStyle, alpha: context.globalAlpha }),
     );
     const blobs = lavaBlobs("track-a", PALETTE);
-    const phase = 7;
 
-    drawLavaBlobs(
-      context as unknown as CanvasRenderingContext2D,
-      400,
-      44,
-      blobs,
-      phase,
-      1,
-    );
+    drawLavaBlobs(context as unknown as CanvasRenderingContext2D, 400, 44, blobs, 7, 0.4);
 
-    const frames = blobs
-      .map((blob) => ({ blob, frame: lavaBlobFrame(blob, 400, 44, phase) }))
-      .sort((a, b) => a.frame.depth - b.frame.depth);
-    expect(drawn.map((entry) => entry.color)).toEqual(
-      frames.map(({ blob }) => blob.color),
-    );
+    expect(drawn.map((entry) => entry.color)).toEqual(blobs.map((blob) => blob.color));
     drawn.forEach((entry, index) => {
-      expect(entry.alpha).toBeCloseTo(frames[index]!.frame.opacity);
+      expect(entry.alpha).toBeCloseTo(
+        0.4 * lavaBlobFrame(blobs[index]!, 400, 44, 7).opacity,
+      );
     });
-  });
-
-  it("fades a whole palette with alpha", () => {
-    const context = fakeContext();
-    const alphas: number[] = [];
-    context.fill.mockImplementation(() => alphas.push(context.globalAlpha));
-    const [blob] = lavaBlobs("track-a", ["#111"]);
-
-    drawLavaBlobs(
-      context as unknown as CanvasRenderingContext2D,
-      400,
-      44,
-      [blob!],
-      3,
-      0.4,
-    );
-
-    expect(alphas[0]).toBeCloseTo(0.4 * lavaBlobFrame(blob!, 400, 44, 3).opacity);
   });
 
   it("makes near blobs bigger, more opaque and sharper than far ones", () => {
@@ -416,13 +384,15 @@ function LavaLoop({
   visible,
   playing,
   palette,
+  mode = "dark",
 }: {
   visible: boolean;
   playing: boolean;
   palette: string[];
+  mode?: LavaTheme;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  useLavaLamp(ref, { seed: "test", colors: palette }, playing, visible);
+  useLavaLamp(ref, { seed: "test", colors: palette, mode }, playing, visible);
   return <canvas ref={ref} />;
 }
 
@@ -441,6 +411,18 @@ describe("lava animation loop", () => {
     Reflect.deleteProperty(document, "visibilityState");
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it("blends with screen in dark themes and multiply in light ones", async () => {
+    onTestFinished(stubCanvasSize());
+    const view = render(<LavaLoop visible playing palette={PALETTE} />);
+    onTestFinished(() => view.unmount());
+
+    await advance(100);
+    expect(context.globalCompositeOperation).toBe("screen");
+    view.rerender(<LavaLoop visible playing palette={PALETTE} mode="light" />);
+    await advance(100);
+    expect(context.globalCompositeOperation).toBe("multiply");
   });
 
   it("runs while playing, stops after a pause settles, and stops on unmount", async () => {

@@ -321,9 +321,11 @@ function requestPaletteSample(seed: string, cover: string | null): void {
 export interface LavaPalette {
   seed: string;
   colors: readonly LavaColor[];
+  /** The theme the colors were banded for, which also picks the blend. */
+  mode: LavaTheme;
 }
 
-const EMPTY_LAVA_PALETTE: LavaPalette = { seed: "", colors: [] };
+const EMPTY_LAVA_PALETTE: LavaPalette = { seed: "", colors: [], mode: "dark" };
 
 /**
  * The palette for one track, from its cover. Cover colors keep their hue and
@@ -362,11 +364,14 @@ function useLavaPalette(
     const element = elementRef.current;
     if (element === null) return;
 
+    const mode = theme.mode;
     const show = (colors: readonly LavaColor[]) => {
       setPalette((current) =>
-        current.seed === seed && sameColors(current.colors, colors)
+        current.seed === seed &&
+        current.mode === mode &&
+        sameColors(current.colors, colors)
           ? current
-          : { seed, colors },
+          : { seed, colors, mode },
       );
     };
 
@@ -569,6 +574,7 @@ interface LavaState {
   fade: number;
   phase: number;
   speed: number;
+  mode: LavaTheme;
 }
 
 function sameColor(a: LavaColor, b: LavaColor): boolean {
@@ -664,7 +670,7 @@ export function lavaBlobFrame(
   return { ...look, stretch, angle: Math.atan2(dy, dx) };
 }
 
-/** Far to near, so near blobs sit on top. `alpha` fades a whole palette on a change. */
+/** `alpha` fades a whole palette on a change. */
 export function drawLavaBlobs(
   context: CanvasRenderingContext2D,
   width: number,
@@ -676,14 +682,8 @@ export function drawLavaBlobs(
 ): void {
   if (blobs.length === 0 || alpha <= 0) return;
 
-  const frames = blobs
-    .map((blob) => ({
-      color: blob.color,
-      frame: lavaBlobFrame(blob, width, height, phase, motion),
-    }))
-    .sort((a, b) => a.frame.depth - b.frame.depth);
-
-  for (const { color, frame } of frames) {
+  for (const blob of blobs) {
+    const frame = lavaBlobFrame(blob, width, height, phase, motion);
     if (frame.radius <= 0) continue;
 
     context.save();
@@ -696,7 +696,7 @@ export function drawLavaBlobs(
       context.rotate(-frame.angle);
       context.translate(-frame.x, -frame.y);
     }
-    context.fillStyle = formatLavaColor(color);
+    context.fillStyle = formatLavaColor(blob.color);
     context.beginPath();
     context.arc(frame.x, frame.y, frame.radius, 0, Math.PI * 2);
     context.fill();
@@ -711,7 +711,7 @@ export function drawLavaBlobs(
  */
 export function useLavaLamp(
   canvasRef: RefObject<HTMLCanvasElement | null>,
-  { seed, colors: palette }: LavaPalette,
+  { seed, colors: palette, mode }: LavaPalette,
   playing: boolean,
   visible: boolean,
 ): void {
@@ -723,6 +723,7 @@ export function useLavaLamp(
     fade: 1,
     phase: 0,
     speed: 0,
+    mode: "dark",
   });
   const state = stateRef.current;
   const pageVisible = usePageVisible();
@@ -732,6 +733,7 @@ export function useLavaLamp(
   const lastDrawRef = useRef(0);
 
   useEffect(() => {
+    state.mode = mode;
     if (state.seed === seed && sameColors(state.palette, palette)) return;
     state.previous = state.current;
     state.seed = seed;
@@ -744,7 +746,7 @@ export function useLavaLamp(
       canvas.dataset.sonoraLavaSeed = seed;
       canvas.dataset.sonoraLavaPalette = JSON.stringify(palette.map(formatLavaColor));
     }
-  }, [canvasRef, palette, seed, state]);
+  }, [canvasRef, mode, palette, seed, state]);
 
   useEffect(() => {
     if (!visible || !pageVisible || palette.length === 0) return;
@@ -775,6 +777,9 @@ export function useLavaLamp(
       if (canvas.height !== height) canvas.height = height;
 
       context.clearRect(0, 0, width, height);
+      // Screen and multiply don't depend on draw order, so blobs passing in
+      // depth never swap which one is on top in a single frame.
+      context.globalCompositeOperation = state.mode === "dark" ? "screen" : "multiply";
       // Smoothstep, close to the backdrop's CSS `ease-in-out`.
       const fade = state.fade * state.fade * (3 - 2 * state.fade);
       if (state.previous.length > 0 && state.fade < 1) {

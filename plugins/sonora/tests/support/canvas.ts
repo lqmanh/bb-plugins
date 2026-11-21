@@ -3,6 +3,7 @@ import { vi } from "vitest";
 export interface FakeContext {
   fillStyle: string | CanvasGradient | CanvasPattern;
   globalAlpha: number;
+  globalCompositeOperation: string;
   filter: string;
   save: ReturnType<typeof vi.fn>;
   restore: ReturnType<typeof vi.fn>;
@@ -21,6 +22,7 @@ export function fakeContext(): FakeContext {
   return {
     fillStyle: "",
     globalAlpha: 1,
+    globalCompositeOperation: "source-over",
     filter: "none",
     save: vi.fn(),
     restore: vi.fn(),
