@@ -216,6 +216,9 @@ describe("Sonora plugin", () => {
       { input: { action: "pause", position: 42.75 }, args: ["pause"] },
       { input: { action: "next" }, args: ["next"] },
       { input: { action: "prev" }, args: ["prev"] },
+      { input: { action: "volume", level: 65 }, args: ["volume", "65"] },
+      { input: { action: "mute", muted: true }, args: ["mute", "on"] },
+      { input: { action: "mute", muted: false }, args: ["mute", "off"] },
     ] as const;
     const exec = new ScriptedExecFile(
       commands.map(() => (callback) => callback(null, "", "")),
@@ -274,6 +277,9 @@ describe("Sonora plugin", () => {
     ["an infinite pause position", { action: "pause", position: Infinity }],
     ["a NaN pause position", { action: "pause", position: NaN }],
     ["a non-number pause position", { action: "pause", position: "10" }],
+    ["a volume above 100", { action: "volume", level: 101 }],
+    ["a fractional volume", { action: "volume", level: 50.5 }],
+    ["a mute without a target", { action: "mute" }],
     ["an unknown action", { action: "toggle" }],
     ["extra fields", { action: "play", position: 10 }],
   ])("rejects %s without running a command", async (_name, input) => {

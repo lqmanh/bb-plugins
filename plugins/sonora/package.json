@@ -28,6 +28,11 @@
         "spotify": "./icons/spotify.svg",
         "subsonic": "./icons/subsonic.svg",
         "tidal": "./icons/tidal.svg",
+        "volume-high": "./icons/volume-high.svg",
+        "volume-low": "./icons/volume-low.svg",
+        "volume-down": "./icons/volume-down.svg",
+        "volume-muted": "./icons/volume-muted.svg",
+        "volume-up": "./icons/volume-up.svg",
         "youtube-music": "./icons/youtubemusic.svg"
       }
     },

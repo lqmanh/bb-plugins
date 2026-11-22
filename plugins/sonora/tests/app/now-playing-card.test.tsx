@@ -53,7 +53,9 @@ describe("Sonora thread context card", () => {
 
     expect(slot.getByText("Night Drive")).toBeTruthy();
     const body = slot.container.firstElementChild as HTMLElement | null;
-    expect(body?.className).toContain("rounded-md");
+    expect(body?.classList.contains("rounded-md")).toBe(true);
+    expect(body?.classList.contains("border")).toBe(true);
+    expect(body?.classList.contains("border-border")).toBe(true);
     expect(body?.style.getPropertyValue("--sonora-backdrop-wash-color")).toBe(
       "var(--popover)",
     );

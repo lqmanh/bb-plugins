@@ -1,13 +1,15 @@
 // @vitest-environment jsdom
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { RenderedSlot } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NowPlayingBody } from "../../src/app/components/now-playing-body.tsx";
+import { HIDE_DELAY_MS } from "../../src/app/components/volume-control.tsx";
 import { SONORA_ICONS } from "../../src/app/lib/constants.ts";
 import { DEBUG_STORAGE_KEY, isDebugMode, setDebugMode } from "../../src/app/lib/debug.ts";
 import { PLAYBACK_ERROR_CLEAR_MS } from "../../src/app/lib/playback-control.ts";
+import { COMMIT_DELAY_MS } from "../../src/app/lib/trailing-commit.ts";
 import {
   NOW_PLAYING_RPC_TAG,
   emptyNowPlaying,
@@ -28,9 +30,10 @@ import {
   backdropCovers,
   backdropImages,
   cover,
+  mockBarTrack,
   settle,
 } from "../support/render.ts";
-import { renderNowPlayingSlot, unmountSlots } from "../support/slot.ts";
+import { renderNowPlayingSlot, unmountSlot, unmountSlots } from "../support/slot.ts";
 
 const CLIENT_START = 1_700_000_000_000;
 const OPEN_SONORA_CASES = [
@@ -524,14 +527,8 @@ describe("Sonora player", () => {
         }),
     );
     const slot = await renderPlayer(() => playing({ position: 42 }), control);
-    const trackElement = slot.container.querySelector("[data-sonora-seek-track]");
-    if (!(trackElement instanceof HTMLElement)) {
-      throw new Error("seek track was not rendered");
-    }
-    vi.spyOn(trackElement, "getBoundingClientRect").mockReturnValue(
-      new DOMRect(100, 0, 200, 4),
-    );
-    const slider = slot.getByRole("slider");
+    const slider = slot.getByRole("slider", { name: "Seek" });
+    mockBarTrack(slider);
 
     fireEvent.pointerDown(slider, { button: 0, clientX: 200 });
     fireEvent.pointerUp(slider);
@@ -731,4 +728,196 @@ describe("Sonora player", () => {
     expect(slot.navigateCalls).toEqual([]);
     expect(slot.queryByRole("button", { name: "Turn off debug mode" })).toBeNull();
   });
+});
+
+function volumeParts(slot: RenderedSlot) {
+  const speaker = slot.getByRole("button", { name: "Volume" });
+  return {
+    speaker,
+    open: () => speaker.getAttribute("aria-expanded") === "true",
+    level: () =>
+      slot.getByRole("slider", { name: "Volume" }).getAttribute("aria-valuetext"),
+    shows: (icon: string) => speaker.querySelector(`[data-icon="${icon}"]`) !== null,
+  };
+}
+
+function press(element: Element, pointerType: "mouse" | "touch"): void {
+  fireEvent.pointerDown(element, { pointerType });
+  fireEvent.click(element, { detail: 1 });
+}
+
+function doubleClick(element: Element): void {
+  press(element, "mouse");
+  fireEvent.click(element, { detail: 2 });
+  fireEvent.doubleClick(element);
+}
+
+describe("Sonora volume", () => {
+  it("sits left of the controls and opens on hover or focus", async () => {
+    const slot = await renderPlayer(() => playing());
+    const { speaker, open } = volumeParts(slot);
+    const controls = slot.getByRole("button", { name: "Previous track" }).parentElement
+      ?.parentElement;
+
+    expect(controls?.firstElementChild?.contains(speaker)).toBe(true);
+    expect(open()).toBe(false);
+
+    fireEvent.pointerEnter(speaker);
+    expect(open()).toBe(true);
+    fireEvent.pointerLeave(speaker);
+    await advance(HIDE_DELAY_MS);
+    expect(open()).toBe(false);
+
+    fireEvent.focus(speaker);
+    expect(open()).toBe(true);
+  });
+
+  it("leaves the popover to hover for a mouse click and toggles it on a tap", async () => {
+    const control = vi.fn<ControlHandler>(() => null);
+    const slot = await renderPlayer(() => playing(), control);
+    const { speaker, open } = volumeParts(slot);
+
+    fireEvent.pointerEnter(speaker);
+    press(speaker, "mouse");
+    expect(open()).toBe(true);
+    fireEvent.pointerLeave(speaker);
+    await advance(HIDE_DELAY_MS);
+
+    press(speaker, "touch");
+    expect(open()).toBe(true);
+    press(speaker, "touch");
+    expect(open()).toBe(false);
+    press(speaker, "touch");
+    fireEvent.pointerDown(document.body, { pointerType: "touch" });
+    expect(open()).toBe(false);
+    expect(control).not.toHaveBeenCalled();
+  });
+
+  it("mutes and unmutes on a double-click, keeping the popover open", async () => {
+    const control = vi.fn<ControlHandler>(() => null);
+    const slot = await renderPlayer(() => playing(), control);
+    const { speaker, open, level, shows } = volumeParts(slot);
+    fireEvent.pointerEnter(speaker);
+
+    doubleClick(speaker);
+    await settle();
+    expect(control).toHaveBeenLastCalledWith({ action: "mute", muted: true });
+    expect(open()).toBe(true);
+    expect(shows(SONORA_ICONS.volumeMuted)).toBe(true);
+
+    // Unmute waits for Sonora to report the restored level.
+    doubleClick(speaker);
+    await settle();
+    expect(control).toHaveBeenLastCalledWith({ action: "mute", muted: false });
+    expect(shows(SONORA_ICONS.volumeMuted)).toBe(false);
+    expect(level()).toBe("0%");
+  });
+
+  it("coalesces scroll and steps, and commits a drag immediately", async () => {
+    const control = vi.fn<ControlHandler>(() => null);
+    const slot = await renderPlayer(() => playing({ volume: 70 }), control);
+    const { speaker, level } = volumeParts(slot);
+    fireEvent.pointerEnter(speaker);
+    const bar = slot.getByRole("slider", { name: "Volume" });
+    mockBarTrack(bar);
+
+    // A trackpad's small deltas add up to one step; a sideways swipe is ignored.
+    fireEvent.wheel(speaker, { deltaY: -30 });
+    fireEvent.wheel(speaker, { deltaY: -30 });
+    fireEvent.wheel(speaker, { deltaX: 100, deltaY: 0 });
+    expect(level()).toBe("75%");
+    await advance(COMMIT_DELAY_MS);
+    expect(control).toHaveBeenLastCalledWith({ action: "volume", level: 75 });
+
+    fireEvent.pointerDown(bar, { button: 0, clientX: 150 });
+    fireEvent.pointerMove(window, { clientX: 220 });
+    fireEvent.pointerUp(window, { clientX: 220 });
+    await settle();
+    expect(control).toHaveBeenLastCalledWith({ action: "volume", level: 60 });
+    await advance(COMMIT_DELAY_MS);
+    expect(control).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(slot.getByRole("button", { name: "Volume down" }));
+    fireEvent.click(slot.getByRole("button", { name: "Volume down" }));
+    fireEvent.click(slot.getByRole("button", { name: "Volume up" }));
+    await advance(COMMIT_DELAY_MS);
+    expect(control).toHaveBeenCalledTimes(3);
+    expect(control).toHaveBeenLastCalledWith({ action: "volume", level: 55 });
+
+    bar.focus();
+    fireEvent.keyDown(bar, { key: "ArrowRight" });
+    expect(level()).toBe("60%");
+    await advance(COMMIT_DELAY_MS);
+    expect(control).toHaveBeenCalledTimes(4);
+    expect(control).toHaveBeenLastCalledWith({ action: "volume", level: 60 });
+  });
+
+  it("labels the value under the pointer on hover and hides it at rest", async () => {
+    const slot = await renderPlayer(() => playing({ volume: 70 }));
+    fireEvent.pointerEnter(volumeParts(slot).speaker);
+    const bar = slot.getByRole("slider", { name: "Volume" });
+    mockBarTrack(bar);
+
+    expect(within(bar).queryByText("70%")).toBeNull();
+
+    fireEvent.pointerMove(bar, { clientX: 150 });
+    within(bar).getByText("25%");
+
+    fireEvent.pointerLeave(bar);
+    expect(within(bar).queryByText("25%")).toBeNull();
+  });
+
+  it("sends a pending level when the speaker unmounts", async () => {
+    const control = vi.fn<ControlHandler>(() => null);
+    const slot = await renderPlayer(() => playing({ volume: 70 }), control);
+    fireEvent.wheel(volumeParts(slot).speaker, { deltaY: -50 });
+
+    unmountSlot(slot);
+    await settle();
+
+    expect(control).toHaveBeenCalledWith({ action: "volume", level: 75 });
+  });
+
+  it.each([
+    {
+      name: "volume",
+      volume: 50,
+      act: "step",
+      icon: SONORA_ICONS.volumeHigh,
+      message: "Couldn't change the volume.",
+    },
+    {
+      name: "mute",
+      volume: 70,
+      act: "double",
+      icon: SONORA_ICONS.volumeHigh,
+      message: "Couldn't mute.",
+    },
+    {
+      name: "unmute",
+      volume: 0,
+      act: "double",
+      icon: SONORA_ICONS.volumeMuted,
+      message: "Couldn't unmute.",
+    },
+  ] as const)(
+    "names a failed $name and rolls back",
+    async ({ volume, act, icon, message }) => {
+      const control = vi.fn<ControlHandler>(() => Promise.reject(new Error("offline")));
+      const slot = await renderPlayer(() => playing({ volume }), control);
+      const { speaker, shows } = volumeParts(slot);
+
+      if (act === "step") {
+        fireEvent.pointerEnter(speaker);
+        fireEvent.click(slot.getByRole("button", { name: "Volume down" }));
+      } else {
+        doubleClick(speaker);
+      }
+      await advance(COMMIT_DELAY_MS);
+      await settle();
+
+      expect(slot.getByRole("status").textContent).toBe(message);
+      expect(shows(icon)).toBe(true);
+    },
+  );
 });

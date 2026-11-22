@@ -16,6 +16,7 @@ import { MarqueeText } from "./marquee.tsx";
 import { OpenSonoraButton } from "./open-sonora-button.tsx";
 import { PlaybackControls } from "./playback-controls.tsx";
 import { SeekBar } from "./seek-bar.tsx";
+import { VolumeControl } from "./volume-control.tsx";
 
 export type PlayerSurface = "sidebar" | "card";
 
@@ -25,14 +26,14 @@ const SURFACES = {
     placeholder: "bg-sidebar-accent text-subtle-foreground",
     coverBorder: "border-sidebar-border",
     backdrop: { "--sonora-backdrop-wash-color": "var(--sidebar)" } as CSSProperties,
-    corners: "",
+    frame: "",
   },
   card: {
     text: "text-popover-foreground",
     placeholder: "bg-accent text-subtle-foreground",
     coverBorder: "border-border",
     backdrop: { "--sonora-backdrop-wash-color": "var(--popover)" } as CSSProperties,
-    corners: "rounded-md",
+    frame: "rounded-md border border-border",
   },
 } as const;
 
@@ -167,7 +168,7 @@ export function NowPlayingBody({ surface }: { surface: PlayerSurface }) {
 
   return (
     <div
-      className={`relative overflow-hidden p-2 ${styles.corners} ${styles.text}`}
+      className={`relative overflow-hidden p-2 ${styles.frame} ${styles.text}`}
       style={styles.backdrop}
     >
       {coverUrl === null ? null : (
@@ -243,6 +244,13 @@ export function NowPlayingBody({ surface }: { surface: PlayerSurface }) {
           </span>
         </div>
         <div className="grid grid-cols-[1fr_auto_1fr] items-center">
+          {data.volume === null ? null : (
+            <VolumeControl
+              className="col-start-1 justify-self-start"
+              volume={data.volume}
+              control={control}
+            />
+          )}
           <PlaybackControls
             state={state}
             position={shown}

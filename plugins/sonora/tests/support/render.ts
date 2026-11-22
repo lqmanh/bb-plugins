@@ -29,3 +29,11 @@ export function cover(container: ParentNode): Element {
   if (element === null) throw new Error("the cover was not rendered");
   return element;
 }
+
+/** Pin a slider track's width so pointer math is deterministic. */
+export function mockBarTrack(root: ParentNode): HTMLElement {
+  const track = root.querySelector(".sonora-slider-track");
+  if (!(track instanceof HTMLElement)) throw new Error("slider track was not rendered");
+  vi.spyOn(track, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 200, 4));
+  return track;
+}

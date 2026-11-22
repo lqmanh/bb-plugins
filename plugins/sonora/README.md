@@ -2,6 +2,8 @@
 
 Show what [Sonora](https://sonorahq.org) is playing in BB.
 
+Requires Sonora 0.50.0 or later.
+
 ## Thread backdrop
 
 Settings → Plugins → Sonora → **Album art behind threads** draws the current

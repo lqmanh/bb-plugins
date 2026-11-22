@@ -23,9 +23,16 @@ export type SonoraPluginDeps = Partial<WatcherDeps>;
 
 /** Only these fixed commands are built here; nothing else reaches the CLI. */
 function controlArgs(control: PlaybackControl): string[] {
-  return control.action === "seek"
-    ? ["seek", formatSeekPosition(control.position)]
-    : [control.action];
+  switch (control.action) {
+    case "seek":
+      return ["seek", formatSeekPosition(control.position)];
+    case "volume":
+      return ["volume", String(control.level)];
+    case "mute":
+      return ["mute", control.muted ? "on" : "off"];
+    default:
+      return [control.action];
+  }
 }
 
 export default function plugin(bb: BbPluginApi, overrides: SonoraPluginDeps = {}) {

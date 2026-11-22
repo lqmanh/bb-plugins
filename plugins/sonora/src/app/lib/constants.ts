@@ -14,6 +14,11 @@ export const SONORA_ICONS = {
   spotify: "sonora/spotify",
   subsonic: "sonora/subsonic",
   tidal: "sonora/tidal",
+  volumeDown: "sonora/volume-down",
+  volumeHigh: "sonora/volume-high",
+  volumeLow: "sonora/volume-low",
+  volumeMuted: "sonora/volume-muted",
+  volumeUp: "sonora/volume-up",
   youtubeMusic: "sonora/youtube-music",
 } as const;
 

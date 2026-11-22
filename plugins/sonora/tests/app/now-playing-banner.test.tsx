@@ -200,7 +200,7 @@ describe("Sonora now-playing banner", () => {
 
   it("redraws the shared clock every fifth of a second", async () => {
     const { slot } = await renderBanner(() => playing());
-    const fill = slot.container.querySelector<HTMLElement>(".sonora-seek-fill");
+    const fill = slot.container.querySelector<HTMLElement>(".sonora-slider-fill");
     if (fill === null) throw new Error("seek fill was not rendered");
     const before = fill.style.width;
 

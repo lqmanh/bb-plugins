@@ -100,7 +100,8 @@ export type NowPlaying = z.infer<typeof nowPlayingSchema>;
 /**
  * Skips and play take no argument. Pause carries the number of seconds the
  * surface shows, for the optimistic read only; seek carries the target
- * position in whole seconds.
+ * position in whole seconds. Volume carries a 0–100 level. Mute carries the
+ * target state; Sonora does not expose its restore level.
  */
 export const playbackControlSchema = z.union([
   z.object({ action: z.enum(["play", "next", "prev"]) }).strict(),
@@ -116,9 +117,20 @@ export const playbackControlSchema = z.union([
       position: z.number().int().nonnegative(),
     })
     .strict(),
+  z
+    .object({
+      action: z.literal("volume"),
+      level: z.number().int().min(0).max(100),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("mute"),
+      muted: z.boolean(),
+    })
+    .strict(),
 ]);
 export type PlaybackControl = z.infer<typeof playbackControlSchema>;
-export type PlaybackControlAction = PlaybackControl["action"];
 
 export const nowPlayingRpcContract = defineRpcContract({
   nowPlaying: {

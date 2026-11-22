@@ -157,30 +157,40 @@ html[data-sonora-backdrop] #thread-detail-timeline-panel [data-page-scroll-viewp
  * The track, fill, and knob derive their opacities from the surface's
  * track/fill color pair instead of each surface naming three colors.
  */
-.sonora-seek-track {
-  background-color: color-mix(in oklab, var(--sonora-seek-track-color) 50%, transparent);
+.sonora-slider-track {
+  background-color: color-mix(in oklab, var(--sonora-slider-track-color) 50%, transparent);
 }
 
-.sonora-seek-fill {
-  background-color: color-mix(in oklab, var(--sonora-seek-color) 75%, transparent);
+.sonora-slider-fill {
+  background-color: color-mix(in oklab, var(--sonora-slider-color) 75%, transparent);
 }
 
-.sonora-seek-knob {
-  background-color: var(--sonora-seek-color);
+.sonora-slider-knob {
+  background-color: var(--sonora-slider-color);
 }
 
-/* Clock corrections glide; scrubbing drops these classes and tracks instantly. */
-.sonora-seek-ease-fill {
-  transition: width 200ms ease-out;
+/*
+ * Input moves the bar instantly; changes the bar makes on its own (clock
+ * corrections, steps, reported levels) glide, on the same timing as the
+ * thickening so the two read as one motion.
+ */
+.sonora-slider-track,
+.sonora-slider-ease {
+  transition-duration: 200ms;
+  transition-timing-function: ease-out;
 }
 
-.sonora-seek-ease-knob {
-  transition: left 200ms ease-out;
+.sonora-slider-track {
+  transition-property: height;
+}
+
+.sonora-slider-ease {
+  transition-property: width, left;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sonora-seek-ease-fill,
-  .sonora-seek-ease-knob {
+  .sonora-slider-track,
+  .sonora-slider-ease {
     transition: none;
   }
 }

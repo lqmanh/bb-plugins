@@ -4,12 +4,9 @@ import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PlaybackControls } from "../../src/app/components/playback-controls.tsx";
-import {
-  KEY_SEEK_DEBOUNCE_MS,
-  SeekBar,
-  type SeekBarProps,
-} from "../../src/app/components/seek-bar.tsx";
-import { advance } from "../support/render.ts";
+import { SeekBar, type SeekBarProps } from "../../src/app/components/seek-bar.tsx";
+import { COMMIT_DELAY_MS } from "../../src/app/lib/trailing-commit.ts";
+import { advance, mockBarTrack } from "../support/render.ts";
 
 beforeEach(() => {
   installTestPluginRuntime();
@@ -84,6 +81,12 @@ describe("PlaybackControls", () => {
   });
 });
 
+function knobClass(slider: HTMLElement): string {
+  const knob = slider.querySelector(".sonora-slider-knob");
+  if (!(knob instanceof HTMLElement)) throw new Error("slider knob was not rendered");
+  return knob.className;
+}
+
 function renderSeekBar(overrides: Partial<SeekBarProps> = {}) {
   const onSeek = vi.fn();
   const onScrub = vi.fn();
@@ -97,11 +100,7 @@ function renderSeekBar(overrides: Partial<SeekBarProps> = {}) {
     />,
   );
   const slider = within(view.container).getByRole("slider");
-  const track = view.container.querySelector("[data-sonora-seek-track]");
-  if (!(track instanceof HTMLElement)) {
-    throw new Error("seek track was not rendered");
-  }
-  vi.spyOn(track, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 200, 12));
+  const track = mockBarTrack(view.container);
   return { view, slider, track, onSeek, onScrub };
 }
 
@@ -143,11 +142,11 @@ describe("SeekBar", () => {
     fireEvent.pointerMove(slider, { clientX: 150 });
     fireEvent.pointerDown(slider, { button: 0, clientX: 150 });
     fireEvent.pointerMove(window, { clientX: 250 });
-    expect(slider.querySelector("[data-sonora-seek-label]")?.textContent).toBe("1:15");
+    expect(slider.textContent).toBe("1:15");
 
     fireEvent.pointerUp(slider, { clientX: 250 });
 
-    expect(slider.querySelector("[data-sonora-seek-label]")?.textContent).toBe("1:15");
+    expect(slider.textContent).toBe("1:15");
   });
 
   it("hides the label when a drag is released outside the bar", () => {
@@ -157,11 +156,11 @@ describe("SeekBar", () => {
     fireEvent.pointerDown(slider, { button: 0, clientX: 150 });
     fireEvent.pointerMove(window, { clientX: 350 });
     fireEvent.pointerLeave(slider);
-    expect(slider.querySelector("[data-sonora-seek-label]")).not.toBeNull();
+    expect(slider.textContent).not.toBe("");
 
     fireEvent.pointerUp(window, { clientX: 350 });
 
-    expect(slider.querySelector("[data-sonora-seek-label]")).toBeNull();
+    expect(slider.textContent).toBe("");
   });
 
   it("sends nothing when a drag is canceled", () => {
@@ -181,7 +180,7 @@ describe("SeekBar", () => {
     fireEvent.keyDown(slider, { key: "ArrowLeft" });
     expect(slider.getAttribute("aria-valuetext")).toBe("0:00");
     expect(onSeek).not.toHaveBeenCalled();
-    await advance(KEY_SEEK_DEBOUNCE_MS);
+    await advance(COMMIT_DELAY_MS);
     expect(onSeek).toHaveBeenLastCalledWith(0);
   });
 
@@ -191,7 +190,7 @@ describe("SeekBar", () => {
     slider.focus();
     fireEvent.keyDown(slider, { key: "ArrowRight" });
     expect(slider.getAttribute("aria-valuetext")).toBe("1:40");
-    await advance(KEY_SEEK_DEBOUNCE_MS);
+    await advance(COMMIT_DELAY_MS);
     expect(onSeek).toHaveBeenLastCalledWith(100);
   });
 
@@ -200,9 +199,9 @@ describe("SeekBar", () => {
 
     slider.focus();
     fireEvent.keyDown(slider, { key: "ArrowRight" });
-    await advance(KEY_SEEK_DEBOUNCE_MS - 100);
+    await advance(COMMIT_DELAY_MS - 100);
     fireEvent.keyDown(slider, { key: "ArrowRight" });
-    await advance(KEY_SEEK_DEBOUNCE_MS - 100);
+    await advance(COMMIT_DELAY_MS - 100);
 
     expect(onSeek).not.toHaveBeenCalled();
     await advance(100);
@@ -215,11 +214,11 @@ describe("SeekBar", () => {
 
     slider.focus();
     fireEvent.keyDown(slider, { key: "Home" });
-    await advance(KEY_SEEK_DEBOUNCE_MS);
+    await advance(COMMIT_DELAY_MS);
     expect(onSeek).toHaveBeenLastCalledWith(0);
 
     fireEvent.keyDown(slider, { key: "End" });
-    await advance(KEY_SEEK_DEBOUNCE_MS);
+    await advance(COMMIT_DELAY_MS);
     expect(onSeek).toHaveBeenLastCalledWith(100);
   });
 
@@ -238,47 +237,41 @@ describe("SeekBar", () => {
     // The track, not the surface-owned root, anchors the knob and label.
     expect(track.className).toContain("relative");
     expect(track.style.height).toBe("2px");
-    expect(slider.querySelector("[data-sonora-seek-knob]")).toBeNull();
+    expect(slider.querySelector(".sonora-slider-knob")).toBeNull();
 
     fireEvent.pointerMove(slider, { clientX: 150 });
 
     expect(track.style.height).toBe("4px");
-    expect(slider.querySelector("[data-sonora-seek-knob]")).not.toBeNull();
-    expect(slider.querySelector("[data-sonora-seek-label]")?.textContent).toBe("0:25");
+    expect(slider.querySelector(".sonora-slider-knob")).not.toBeNull();
+    expect(slider.textContent).toBe("0:25");
 
     fireEvent.pointerLeave(slider);
     expect(track.style.height).toBe("2px");
-    expect(slider.querySelector("[data-sonora-seek-knob]")).toBeNull();
-    expect(slider.querySelector("[data-sonora-seek-label]")).toBeNull();
+    expect(slider.querySelector(".sonora-slider-knob")).toBeNull();
+    expect(slider.textContent).toBe("");
   });
 
   it("eases clock corrections but follows scrubbing instantly", () => {
     const { slider } = renderSeekBar();
-    const fill = slider.querySelector(".sonora-seek-fill");
+    const fill = slider.querySelector(".sonora-slider-fill");
     if (!(fill instanceof HTMLElement)) throw new Error("seek fill was not rendered");
-    expect(fill.className).toContain("sonora-seek-ease-fill");
+    expect(fill.className).toContain("sonora-slider-ease");
 
     fireEvent.pointerMove(slider, { clientX: 150 });
-    expect(slider.querySelector("[data-sonora-seek-knob]")?.className).toContain(
-      "sonora-seek-ease-knob",
-    );
+    expect(knobClass(slider)).toContain("sonora-slider-ease");
 
     fireEvent.pointerDown(slider, { button: 0, clientX: 150 });
-    expect(fill.className).not.toContain("sonora-seek-ease-fill");
-    expect(slider.querySelector("[data-sonora-seek-knob]")?.className).not.toContain(
-      "sonora-seek-ease-knob",
-    );
+    expect(fill.className).not.toContain("sonora-slider-ease");
+    expect(knobClass(slider)).not.toContain("sonora-slider-ease");
 
     fireEvent.pointerUp(window);
-    expect(fill.className).toContain("sonora-seek-ease-fill");
+    expect(fill.className).toContain("sonora-slider-ease");
 
     // The keyboard preview also tracks each press without a transition.
     slider.focus();
     fireEvent.keyDown(slider, { key: "ArrowRight" });
-    expect(fill.className).not.toContain("sonora-seek-ease-fill");
-    expect(slider.querySelector("[data-sonora-seek-knob]")?.className).not.toContain(
-      "sonora-seek-ease-knob",
-    );
+    expect(fill.className).not.toContain("sonora-slider-ease");
+    expect(knobClass(slider)).not.toContain("sonora-slider-ease");
   });
 
   it("does not take focus on mousedown or drag", () => {

@@ -2,7 +2,7 @@ import { experimental_Icon as Icon } from "@get-bb/plugin-sdk/app";
 
 import type { PlaybackControl, PlaybackState } from "../../shared/now-playing.ts";
 import { SONORA_ICONS } from "../lib/constants.ts";
-import { ControlButton } from "./control-button.tsx";
+import { IconButton } from "./icon-button.tsx";
 
 /** Play/pause, previous, and next, driven by the shared control hook. */
 export function PlaybackControls({
@@ -23,20 +23,20 @@ export function PlaybackControls({
 
   return (
     <div className={`flex items-center gap-1 ${className ?? ""}`}>
-      <ControlButton label="Previous track" onClick={() => control({ action: "prev" })}>
+      <IconButton label="Previous track" onClick={() => control({ action: "prev" })}>
         <Icon name={SONORA_ICONS.skipBack} aria-hidden="true" className="size-4" />
-      </ControlButton>
-      <ControlButton
+      </IconButton>
+      <IconButton
         label={label}
         onClick={() =>
           control(pausing ? { action: "pause", position } : { action: "play" })
         }
       >
         <Icon name={label} aria-hidden="true" className="size-4" />
-      </ControlButton>
-      <ControlButton label="Next track" onClick={() => control({ action: "next" })}>
+      </IconButton>
+      <IconButton label="Next track" onClick={() => control({ action: "next" })}>
         <Icon name={SONORA_ICONS.skipForward} aria-hidden="true" className="size-4" />
-      </ControlButton>
+      </IconButton>
     </div>
   );
 }
